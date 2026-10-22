@@ -2,8 +2,8 @@
  * Client for the server's speech endpoint. Same contract the reader expects from an
  * engine: warm(), synth(text, { voice, speed }) → { samples, sampleRate }.
  *
- * Audio comes back as WAV and is decoded locally, so the player can keep scheduling
- * chunks ahead of playback.
+ * Audio comes back as WAV and is decoded locally, so the player can schedule chunks
+ * ahead of playback.
  */
 export class Tts {
   #decoder = null;
@@ -69,7 +69,7 @@ export class Tts {
   }
 
   abandon() {
-    // Requests are cheap and short-lived on a local network; nothing to cancel.
+    // Local requests are short; nothing to cancel.
   }
 
   dispose() {

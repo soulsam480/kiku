@@ -1,7 +1,7 @@
 /**
  * Client for the server's transcription endpoint. The server decodes the recording,
- * gates on loudness and filters Whisper hallucinations, so the client only has to
- * send the blob and read the text back.
+ * gates on loudness and filters Whisper hallucinations, so the client only sends the
+ * blob and reads the text back.
  */
 export class Stt {
   /** @type {(progress: { loaded: number, total: number }) => void} */

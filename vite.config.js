@@ -2,8 +2,8 @@ import { defineConfig } from "vite";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 
-// The app is served by the Bun server in production. During development Vite serves
-// the frontend and proxies the API, so both can run side by side.
+// Vite builds the frontend. The Bun server serves it, the API and the audio;
+// during development Vite proxies the API so both can run side by side.
 const API = { target: "http://127.0.0.1:8787", changeOrigin: true };
 const proxy = { "/v1": API, "/api": API, "/health": API };
 
@@ -19,7 +19,7 @@ export default defineConfig({
       manifest: {
         name: "Listener",
         short_name: "Listener",
-        description: "Listen to documents, interrupt to ask a question, keep listening.",
+        description: "Listen to documents, upload books, generate audiobooks.",
         theme_color: "#0f1115",
         background_color: "#0f1115",
         display: "standalone",

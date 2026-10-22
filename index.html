@@ -19,8 +19,12 @@
           :class="mode === 'playing' ? 'badge-success' : 'badge-outline'"
           x-text="statusLabel"
         ></span>
+        <div role="tablist" class="tabs tabs-border">
+          <button role="tab" class="tab" :class="view === 'library' ? 'tab-active' : ''" @click="view = 'library'">Library</button>
+          <button role="tab" class="tab" :class="view === 'reader' ? 'tab-active' : ''" @click="view = 'reader'">Reader</button>
+        </div>
         <span class="grow"></span>
-        <button class="btn btn-sm btn-outline" @click="openLibrary()">
+        <button class="btn btn-sm btn-outline" x-show="view === 'reader'" @click="openLibrary()">
           <span class="sm:hidden">Docs</span>
           <span class="hidden sm:inline">Documents</span>
         </button>
@@ -36,7 +40,110 @@
       </button>
     </div>
 
-    <main class="mx-auto grid w-full max-w-6xl min-h-0 flex-1 gap-3 overflow-hidden p-3 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
+
+    <section
+      x-data="library"
+      x-show="view === 'library'"
+      class="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-3 overflow-hidden p-3"
+    >
+      <div class="flex flex-wrap items-center gap-2">
+        <label class="btn btn-sm btn-primary">
+          Upload book
+          <input type="file" accept=".md,.markdown,.txt,.epub" class="hidden" @change="upload($event)" />
+        </label>
+        <button class="btn btn-sm btn-outline" @click="showPaste = !showPaste">Paste text</button>
+
+        <label class="ml-auto flex items-center gap-2 text-xs text-base-content/60">
+          Voice
+          <select x-model="voice" class="select select-sm max-w-40">
+            <template x-for="option in voices" :key="option.id">
+              <option :value="option.id" x-text="option.label"></option>
+            </template>
+          </select>
+        </label>
+        <span class="text-xs text-base-content/50" x-show="busy">working…</span>
+      </div>
+
+      <div x-show="showPaste" class="flex flex-col gap-2">
+        <textarea
+          x-model="pasted"
+          class="textarea h-28 w-full font-mono text-xs"
+          placeholder="Paste markdown or plain text…"
+        ></textarea>
+        <button class="btn btn-sm w-fit" @click="paste()">Add document</button>
+      </div>
+
+      <div class="alert alert-error py-2 text-sm" x-show="error">
+        <span x-text="error"></span>
+        <button class="btn btn-xs btn-ghost" @click="error = ''">Dismiss</button>
+      </div>
+
+      <div class="min-h-0 flex-1 overflow-auto" x-show="!current">
+        <template x-for="document in documents" :key="document.id">
+          <div class="mb-2 flex items-center gap-3 rounded-box bg-base-200 px-3 py-2">
+            <button class="min-w-0 flex-1 text-left" @click="open(document)">
+              <span class="block truncate text-sm font-medium" x-text="document.title"></span>
+              <span class="text-xs text-base-content/50">
+                <span x-text="document.done + '/' + document.chapters + ' chapters'"></span>
+                <span x-show="document.duration"> · <span x-text="duration(document.duration)"></span></span>
+              </span>
+            </button>
+            <button class="btn btn-xs btn-outline" @click="open(document)">Open</button>
+            <button class="btn btn-xs btn-outline btn-error" @click="remove(document)">Delete</button>
+          </div>
+        </template>
+        <p class="mt-6 text-center text-sm text-base-content/50" x-show="documents.length === 0">
+          Nothing here yet. Upload an EPUB, markdown or text file to generate an audiobook.
+        </p>
+      </div>
+
+      <div class="flex min-h-0 flex-1 flex-col gap-2" x-show="current">
+        <div class="flex items-center gap-2">
+          <button class="btn btn-xs btn-outline" @click="current = null">Back</button>
+          <h2 class="min-w-0 flex-1 truncate text-sm font-medium" x-text="current?.title"></h2>
+          <button class="btn btn-xs btn-primary" @click="generateAll()">Generate all</button>
+        </div>
+
+        <ul class="min-h-0 flex-1 space-y-1 overflow-auto">
+          <template x-for="chapter in current?.chapters ?? []" :key="chapter.id">
+            <li class="flex items-center gap-2 rounded-box bg-base-200 px-3 py-2">
+              <button class="min-w-0 flex-1 text-left" @click="toggle(chapter)">
+                <span class="block truncate text-sm" x-text="chapter.title"></span>
+                <span
+                  class="text-xs"
+                  :class="chapter.status === 'error' ? 'text-error' : 'text-base-content/50'"
+                  x-text="status(chapter)"
+                ></span>
+              </button>
+              <span class="text-xs text-base-content/40" x-text="size(chapter.bytes)"></span>
+              <button
+                class="btn btn-xs btn-outline"
+                x-show="chapter.status === 'done'"
+                @click="toggle(chapter)"
+                x-text="playing === chapter.id ? 'Pause' : 'Play'"
+              ></button>
+              <button
+                class="btn btn-xs btn-outline"
+                x-show="['pending', 'error'].includes(chapter.status)"
+                @click="generate(chapter)"
+              >Generate</button>
+            </li>
+          </template>
+        </ul>
+
+        <div class="flex items-center gap-2 text-xs text-base-content/60" x-show="playing">
+          <button class="btn btn-xs btn-outline" @click="previous()">Previous</button>
+          <button class="btn btn-xs btn-outline" @click="next()">Next</button>
+          <label class="ml-auto flex items-center gap-2">
+            Speed
+            <input type="range" min="0.6" max="1.6" step="0.05" x-model.number="speed" @input="setSpeed()" class="range range-xs w-24" />
+            <span x-text="speed.toFixed(2)"></span>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <main x-show="view === 'reader'" class="mx-auto grid w-full max-w-6xl min-h-0 flex-1 gap-3 overflow-hidden p-3 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
       <section
         class="min-h-0 flex-1 flex-col overflow-hidden rounded-box bg-base-200"
         :class="tab === 'doc' ? 'flex' : 'hidden lg:flex'"
@@ -108,7 +215,7 @@
       </section>
     </main>
 
-    <footer class="shrink-0 border-t border-base-300 bg-base-100">
+    <footer x-show="view === 'reader'" class="shrink-0 border-t border-base-300 bg-base-100">
       <div class="mx-auto flex max-w-6xl flex-col gap-2 px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         <div class="flex items-center gap-2 text-xs text-base-content/50">
           <span x-text="progressText"></span>

@@ -5,16 +5,18 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:server": "bun --watch server/index.js",
     "build": "vite build",
-    "serve": "bun run server/index.js",
-    "start": "bun run build && bun run serve",
+    "preview": "vite preview",
     "test": "node --test tests/*.test.mjs && npm run typecheck",
-    "typecheck": "tsc -p jsconfig.json --noEmit"
+    "deploy": "vite build && wrangler deploy",
+    "typecheck": "tsc -p jsconfig.json --noEmit",
+    "serve": "bun src/server.js",
+    "dev:server": "bun --watch src/server.js"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",
     "alpinejs": "^3.15.0",
+    "fflate": "^0.8.3",
     "kokoro-js": "^1.2.1",
     "marked": "^18.1.1",
     "tinykeys": "^4.0.1"
@@ -22,6 +24,7 @@
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.3.3",
+    "@types/bun": "^1.4.3",
     "daisyui": "^5.7.50",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",

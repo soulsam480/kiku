@@ -3,7 +3,7 @@
  * 16 kHz mono float samples Whisper expects, then the transcript is returned.
  */
 import { pipeline } from "@huggingface/transformers";
-import { usableClip, usableTranscript } from "../src/guard.js";
+import { usableClip, usableTranscript } from "./guard.js";
 
 const MODEL_ID = process.env.STT_MODEL ?? "Xenova/whisper-tiny.en";
 const ffmpeg = process.env.FFMPEG ?? "ffmpeg";

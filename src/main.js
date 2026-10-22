@@ -11,6 +11,7 @@ import { askQuestion, buildContext } from "./llm.js";
 import { loadSettings, saveSettings, newSessionId } from "./store.js";
 import { VOICE_GROUPS, VOICES } from "./voices.js";
 import { playSample } from "./preview.js";
+import "./library.js";
 import {
   listDocuments,
   saveDocument,
@@ -73,6 +74,7 @@ Alpine.data("app", () => {
 
   return {
     mode: "idle",
+    view: "library",
     micState: "idle",
     askStage: "",
     tab: "doc",

@@ -14,7 +14,9 @@
     "resolveJsonModule": true,
     "strict": false,
     "skipLibCheck": true,
-    "types": [],
+    "types": [
+      "bun"
+    ],
     "paths": {
       "alpinejs": [
         "./src/types/alpinejs.d.ts"
