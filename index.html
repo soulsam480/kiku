@@ -20,6 +20,7 @@
           x-text="statusLabel"
         ></span>
         <span class="grow"></span>
+        <button class="btn btn-sm btn-ghost" @click="openLibrary()">Documents</button>
         <button class="btn btn-sm btn-ghost" @click="openSettings()">Settings</button>
       </div>
     </header>
@@ -27,7 +28,7 @@
     <main class="mx-auto grid w-full max-w-6xl min-h-0 flex-1 gap-3 overflow-y-auto p-3 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:overflow-hidden">
       <section class="flex min-h-[55vh] flex-col overflow-hidden rounded-box bg-base-200 lg:min-h-0">
         <div class="flex shrink-0 items-center justify-between gap-2 border-b border-base-300 px-4 py-2">
-          <h2 class="text-sm font-medium text-base-content/70">Document</h2>
+          <h2 class="truncate text-sm font-medium text-base-content/70" x-text="docTitle"></h2>
           <span class="text-xs text-base-content/50" x-text="chunkCount ? chunkCount + ' sentences' : ''"></span>
         </div>
 
@@ -39,14 +40,17 @@
         ></textarea>
 
         <article
+          id="preview"
           x-show="!editing"
           x-ref="preview"
-          class="min-h-0 flex-1 overflow-auto p-4 text-[0.95rem] leading-relaxed [&>*]:max-w-[70ch]"
+          class="min-h-0 flex-1 overflow-auto p-4 text-[0.95rem] leading-relaxed"
         ></article>
 
         <div class="flex shrink-0 items-center gap-2 border-t border-base-300 px-4 py-2">
           <button class="btn btn-sm" @click="start()">Start listening</button>
           <button class="btn btn-sm btn-ghost" @click="editing = !editing" x-text="editing ? 'Preview' : 'Edit text'"></button>
+          <span class="grow"></span>
+          <button class="btn btn-sm btn-ghost" @click="newDocument()">New</button>
         </div>
       </section>
 
@@ -65,7 +69,7 @@
                 <span x-text="formatTime(entry.at)"></span>
                 <span>· sentence</span>
                 <span x-text="entry.chunk + 1"></span>
-                <button class="btn btn-xs btn-ghost ml-auto" @click="replay(entry)" aria-label="Speak this answer again">
+                <button class="btn btn-xs btn-ghost ml-auto" @click="replay(entry)" aria-label="Speak this answer again" x-show="settings.speakAnswers">
                   <svg viewBox="0 0 16 16" class="size-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
                     <path d="M2.5 8a5.5 5.5 0 1 1 1.7 4" />
                     <path d="M2 12.5V8.8h3.7" />
@@ -85,7 +89,7 @@
         <div class="flex items-center gap-2 text-xs text-base-content/50">
           <span x-text="progressText"></span>
           <span class="grow"></span>
-          <span class="hidden sm:inline">space pause · ←→ sentence · i ask · m talk</span>
+          <span class="hidden sm:inline">space pause · ←→ sentence · click text to jump · i ask · m talk</span>
         </div>
 
         <p class="line-clamp-2 min-h-10 text-sm leading-snug text-base-content/90" x-text="caption"></p>
@@ -142,6 +146,39 @@
       </div>
     </div>
 
+    <dialog x-ref="libraryDialog" class="modal">
+      <div class="modal-box max-w-lg">
+        <h3 class="text-base font-semibold">Documents</h3>
+        <p class="mt-1 text-xs text-base-content/50">Each document keeps its own reading position and questions.</p>
+
+        <ul class="mt-3 max-h-[50vh] space-y-2 overflow-auto">
+          <template x-for="item in library" :key="item.id">
+            <li class="flex items-center gap-2 rounded-box bg-base-200 px-3 py-2">
+              <button class="min-w-0 flex-1 text-left" @click="open(item)">
+                <span class="block truncate text-sm" x-text="item.title"></span>
+                <span class="text-xs text-base-content/50">
+                  <span x-text="formatDate(item.updatedAt)"></span>
+                  <span> · sentence </span>
+                  <span x-text="(item.position ?? 0) + 1"></span>
+                  <span> · </span>
+                  <span x-text="(item.log?.length ?? 0) + ' questions'"></span>
+                </span>
+              </button>
+              <button class="btn btn-xs btn-ghost" @click="remove(item)">Delete</button>
+            </li>
+          </template>
+        </ul>
+
+        <p class="mt-3 text-sm text-base-content/50" x-show="library.length === 0">No saved documents yet.</p>
+
+        <div class="modal-action">
+          <button class="btn btn-sm" @click="newDocument()">New document</button>
+          <button class="btn btn-sm btn-ghost" @click="$refs.libraryDialog.close()">Close</button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
     <dialog x-ref="settingsDialog" class="modal">
       <div class="modal-box">
         <h3 class="text-base font-semibold">Settings</h3>
@@ -173,6 +210,10 @@
             <legend class="fieldset-legend">Speed · <span x-text="Number(draft.speed).toFixed(2)"></span></legend>
             <input x-model="draft.speed" type="range" min="0.6" max="1.4" step="0.05" class="range w-full" />
           </fieldset>
+          <label class="label cursor-pointer justify-start gap-3">
+            <input x-model="draft.speakAnswers" type="checkbox" class="toggle toggle-sm" />
+            <span class="text-sm">Speak answers aloud</span>
+          </label>
         </div>
         <div class="modal-action">
           <button class="btn btn-sm" @click="saveSettings()">Save</button>
