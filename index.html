@@ -28,11 +28,11 @@
       </div>
     </header>
 
-    <div class="mx-auto flex w-full max-w-6xl shrink-0 gap-1 px-3 pt-2 lg:hidden">
-      <button class="btn btn-sm flex-1" :class="tab === 'doc' ? '' : 'btn-ghost'" @click="tab = 'doc'">Document</button>
-      <button class="btn btn-sm flex-1" :class="tab === 'log' ? '' : 'btn-ghost'" @click="tab = 'log'">
+    <div role="tablist" class="tabs tabs-border mx-3 mt-2 shrink-0 lg:hidden">
+      <button role="tab" class="tab flex-1" :class="tab === 'doc' ? 'tab-active' : ''" @click="tab = 'doc'">Document</button>
+      <button role="tab" class="tab flex-1" :class="tab === 'log' ? 'tab-active' : ''" @click="tab = 'log'">
         <span>Questions</span>
-        <span class="badge badge-xs" x-show="log.length" x-text="log.length"></span>
+        <span class="badge badge-xs badge-primary" x-show="log.length" x-text="log.length"></span>
       </button>
     </div>
 
