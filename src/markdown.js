@@ -48,7 +48,8 @@ export function speechText(markdown) {
   text = text.replace(/(\*|(?<![\w])_)([^*_]+)\1(?![\w])/g, "$2"); // italic, but not snake_case
   text = text.replace(/[*]/g, ""); // stray emphasis markers
   text = text.replace(/<[^>]+>/g, " "); // raw html
-  text = text.replace(/[\u{1F000}-\u{1FAFF}\u{2190}-\u{27BF}\u{FE0F}]/gu, ""); // emoji and arrows
+  text = normalizeEmoji(text); // say "check", not nothing
+  text = text.replace(/\b([\p{L}\p{N}+$]+)(?:[\s,]+\1\b)+/giu, "$1"); // "check check" → "check"
   text = text.replace(/\band\/or\b/gi, "and or");
   text = text.replace(/(\d)\s*\/\s*(\d)/g, "$1 over $2"); // fractions
   text = text.replace(/\s*\/\s*/g, " "); // slashes: paths, separators
@@ -176,6 +177,7 @@ function narrateTable(rows) {
   if (!data.length) return null;
 
   const columns = Math.max(header?.length ?? 0, ...data.map((cells) => cells.length));
+  const labels = header ?? [];
 
   if (columns <= 2) {
     return data
@@ -187,51 +189,135 @@ function narrateTable(rows) {
       .join("\n\n");
   }
 
-  const labels = header ?? [];
+  if (columns <= 4 && data.length <= 20) return rowWise(data, labels);
+  if (isMatrix(labels, columns)) return columnWise(data, labels);
 
-  if (columns <= 4 && data.length <= 20) {
-    const intro = `Table with ${data.length} row${data.length === 1 ? "" : "s"}. Columns: ${labels.filter(Boolean).join(", ")}.`;
-    const lines = data.map((cells) => {
-      const [first = "", ...rest] = cells;
-      const details = rest
-        .map((cell, index) => (cell ? `${labels[index + 1] ? `${labels[index + 1]}: ` : ""}${cell}` : ""))
-        .filter(Boolean)
-        .join(". ");
-      return details ? `${first}. ${details}.` : `${first}.`;
-    });
-    return [intro, ...lines].join("\n\n");
+  return rowWise(data, labels);
+}
+
+/** Comparison matrices put entities across the top and attributes down the side. */
+function isMatrix(labels, columns) {
+  return columns >= 5 && !labels[0];
+}
+
+/** Read one column at a time: "Blinq. Model: freemium seat. Entry price: $5." */
+function columnWise(data, labels) {
+  const headers = labels.slice(1);
+  const shown = Math.min(headers.length, 10);
+  const blocks = [];
+
+  for (let column = 0; column < shown; column += 1) {
+    const values = data
+      .map((cells) => {
+        const value = cells[column + 1];
+        if (!value || isFalsy(value)) return "";
+        return cells[0] ? `${cells[0]}: ${value}` : value;
+      })
+      .filter(Boolean);
+
+    if (values.length) blocks.push(`${headers[column] || `Column ${column + 2}`}. ${values.join(". ")}.`);
   }
 
-  const detailColumn = widestColumn(data, columns);
-  const shown = data.slice(0, 8);
-  const hidden = data.length - shown.length;
+  const intro = `Table with ${data.length} rows and ${headers.length} columns.`;
+  const tail = headers.length > shown ? `And ${headers.length - shown} more columns.` : "";
 
-  const intro = `Table with ${data.length} rows and ${columns} columns. Reading ${labels[0] ?? "the first column"} and ${labels[detailColumn] ?? "one detail column"}.`;
+  return [intro, ...blocks, tail].filter(Boolean).join("\n\n");
+}
+
+/** Read row by row with column labels, keeping every column. */
+function rowWise(data, labels) {
+  const shown = data.length > 20 ? data.slice(0, 20) : data;
+
   const lines = shown.map((cells) => {
-    const first = cells[0] ?? "";
-    const detail = cells[detailColumn] ?? "";
-    if (!detail) return `${first}.`;
-    return `${first}. ${labels[detailColumn] ? `${labels[detailColumn]}: ` : ""}${detail}.`;
+    const [first = "", ...rest] = cells;
+    const details = rest
+      .map((cell, index) => {
+        if (!cell || isFalsy(cell)) return "";
+        return labels[index + 1] ? `${labels[index + 1]}: ${cell}` : cell;
+      })
+      .filter(Boolean)
+      .join(". ");
+
+    return details ? `${first}. ${details}.` : `${first}.`;
   });
-  const tail = hidden > 0 ? `And ${hidden} more rows.` : "";
+
+  const intro =
+    shown.length < data.length
+      ? `Table with ${data.length} rows and ${Math.max(labels.length, ...data.map((c) => c.length))} columns, first ${shown.length}.`
+      : `Table with ${data.length} row${data.length === 1 ? "" : "s"}. Columns: ${labels.filter(Boolean).join(", ")}.`;
+  const tail = shown.length < data.length ? `And ${data.length - shown.length} more rows.` : "";
 
   return [intro, ...lines, tail].filter(Boolean).join("\n\n");
 }
 
-/** The column (after the first) holding the most text is usually the explanatory one. */
-function widestColumn(data, columns) {
-  let best = 1;
-  let bestLength = -1;
+/** Cells that carry no information when spoken. */
+function isFalsy(value) {
+  return /^(|[-—–]|n\/?a|none|no|false|0|x|✗|✘|❌|·)$/i.test(value.trim());
+}
 
-  for (let column = 1; column < columns; column += 1) {
-    const length = data.reduce((total, cells) => total + (cells[column]?.length ?? 0), 0);
-    if (length > bestLength) {
-      bestLength = length;
-      best = column;
+const EMOJI_WORDS = new Map(
+  Object.entries({
+    "✅": " check ",
+    "✔️": " check ",
+    "☑️": " check ",
+    "❌": " cross ",
+    "✖️": " cross ",
+    "❎": " cross ",
+    "⚠️": " warning ",
+    "⚠": " warning ",
+    "❗": " important ",
+    "❓": " question ",
+    "ℹ️": " note ",
+    "⭐": " star ",
+    "🌟": " star ",
+    "🔥": " hot ",
+    "💡": " idea ",
+    "📌": " pinned ",
+    "🚀": " launch ",
+    "🎯": " target ",
+    "📈": " growth ",
+    "📉": " decline ",
+    "❤️": " heart ",
+    "👍": " thumbs up ",
+    "👎": " thumbs down ",
+    "🔴": " red ",
+    "🟢": " green ",
+    "🟡": " yellow ",
+    "🔵": " blue ",
+    "👀": " look ",
+    "🎉": " celebrate ",
+    "🧠": " thinking ",
+    "➡️": " arrow ",
+    "→": " to ",
+    "←": " from ",
+    "↑": " up ",
+    "↓": " down ",
+  }),
+);
+
+const EMOJI_PATTERN = /[\p{Extended_Pictographic}\u2190-\u21FF\u2B00-\u2BFF]/u;
+
+/**
+ * Say emoji instead of dropping them: ❌ becomes "cross", ✅ becomes "check".
+ * Unknown emoji are removed so they are never read as noise.
+ */
+function normalizeEmoji(text) {
+  if (!EMOJI_PATTERN.test(text)) return text;
+
+  const segmenter = new Intl.Segmenter("en", { granularity: "grapheme" });
+  let output = "";
+
+  for (const { segment } of segmenter.segment(text)) {
+    const isEmoji = EMOJI_PATTERN.test(segment) || /[\uFE0F\u20E3]/u.test(segment);
+    if (!isEmoji) {
+      output += segment;
+      continue;
     }
+
+    output += EMOJI_WORDS.get(segment) ?? EMOJI_WORDS.get(segment.replace(/\uFE0F/g, "")) ?? " ";
   }
 
-  return best;
+  return output;
 }
 
 /** Add a full stop to lines that would otherwise run together, and drop empty ones. */
