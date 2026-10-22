@@ -3,7 +3,6 @@ import { marked } from "marked";
 import { tinykeys } from "tinykeys";
 import { speechText, splitIntoChunks, takeSentences, paragraphs } from "./markdown.js";
 import { mapChunksToBlocks, invert } from "./mapping.js";
-import { usableClip, usableTranscript } from "./guard.js";
 import { Player } from "./player.js";
 import { Tts } from "./tts.js";
 import { Mic } from "./mic.js";
@@ -971,27 +970,21 @@ Alpine.data("app", () => {
       if (this.micState !== "recording") return;
       this.micState = "transcribing";
 
-      const samples = await mic.stop();
+      const clip = await mic.stop();
 
-      if (!transcribe || !samples) {
+      if (!transcribe || !clip) {
         this.micState = "idle";
         if (!transcribe) this.resumeDocument();
         return;
       }
 
-      // Silence and room noise make Whisper hallucinate; never spend a model call on that.
-      if (!usableClip(samples)) {
-        this.micState = "idle";
-        this.fail("Didn't catch that. Try again.");
-        return;
-      }
-
       try {
-        const text = await stt.transcribe(samples);
+        // The server decodes the clip, gates on loudness and filters hallucinations.
+        const text = await stt.transcribe(clip);
         this.modelProgress = "";
         this.micState = "idle";
 
-        if (!usableTranscript(text)) {
+        if (!text) {
           this.fail("Didn't catch that. Try again.");
           return;
         }

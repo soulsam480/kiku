@@ -1,6 +1,6 @@
-const TARGET_RATE = 16000;
+const MIN_SECONDS = 0.3;
 
-/** Records a short clip from the microphone and returns 16 kHz mono samples. */
+/** Records a short clip from the microphone and returns it as a Blob. */
 export class Mic {
   #stream = null;
   #recorder = null;
@@ -22,8 +22,7 @@ export class Mic {
     this.#startedAt = Date.now();
   }
 
-  /** Stops recording. Returns null when the clip was too short to be speech. */
-  /** @returns {Promise<Float32Array<ArrayBuffer> | null>} null when the clip was too short */
+  /** @returns {Promise<Blob | null>} null when the clip was too short to be speech */
   async stop() {
     const recorder = this.#recorder;
     if (!recorder || recorder.state !== "recording") return null;
@@ -34,28 +33,13 @@ export class Mic {
 
     const clip = new Blob(this.#chunks, { type: recorder.mimeType });
     this.#chunks = [];
-    if (Date.now() - this.#startedAt < 300) return null;
+    if (Date.now() - this.#startedAt < MIN_SECONDS * 1000) return null;
 
-    return toSamples(clip);
+    return clip;
   }
 
   release() {
     for (const track of this.#stream?.getTracks() ?? []) track.stop();
     this.#stream = null;
   }
-}
-
-async function toSamples(clip) {
-  const context = new AudioContext();
-  const decoded = await context.decodeAudioData(await clip.arrayBuffer());
-  await context.close();
-
-  const offline = new OfflineAudioContext(1, Math.ceil(decoded.duration * TARGET_RATE), TARGET_RATE);
-  const source = offline.createBufferSource();
-  source.buffer = decoded;
-  source.connect(offline.destination);
-  source.start();
-
-  const rendered = await offline.startRendering();
-  return rendered.getChannelData(0);
 }

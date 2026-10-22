@@ -94,31 +94,19 @@ export async function askQuestion({ settings, sessionId, question, context, sign
 }
 
 /**
- * The dev and preview servers relay the call so providers that block browser CORS
- * (and want a client User-Agent) still work. A plain static deploy falls back to
- * calling the endpoint directly.
+ * The Bun server performs the provider call: browsers cannot set User-Agent and most
+ * providers refuse cross-origin requests.
  */
 async function send({ settings, sessionId, payload, signal }) {
-  const authorization = `Bearer ${settings.apiKey}`;
-
-  const relayed = await fetch("/llm/chat/completions", {
+  return fetch("/api/llm/chat/completions", {
     method: "POST",
     signal,
     headers: {
       "Content-Type": "application/json",
-      Authorization: authorization,
+      Authorization: `Bearer ${settings.apiKey}`,
       "x-llm-target": settings.baseUrl,
       "x-llm-session": sessionId,
     },
-    body: payload,
-  }).catch(() => null);
-
-  if (relayed && relayed.status !== 404) return relayed;
-
-  return fetch(`${settings.baseUrl.replace(/\/+$/, "")}/chat/completions`, {
-    method: "POST",
-    signal,
-    headers: { "Content-Type": "application/json", Authorization: authorization },
     body: payload,
   });
 }

@@ -1,15 +1,14 @@
 /**
- * Client for the Kokoro worker. One request in, one synthesized chunk out;
- * requests are answered in the order they were sent.
+ * Client for the server's speech endpoint. Same contract the reader expects from an
+ * engine: warm(), synth(text, { voice, speed }) → { samples, sampleRate }.
  *
- * The worker is created on first use and can be terminated with `dispose()` to give
- * the model's memory back. The next request simply starts a fresh worker, which
- * reloads the weights from the browser cache.
+ * Audio comes back as WAV and is decoded locally, so the player can keep scheduling
+ * chunks ahead of playback.
  */
 export class Tts {
-  #worker = null;
-  #requests = new Map();
-  #nextId = 1;
+  #decoder = null;
+  #loaded = false;
+  #pending = 0;
 
   /** @type {(progress: { loaded: number, total: number }) => void} */
   onProgress = () => {};
@@ -19,104 +18,68 @@ export class Tts {
   onError = () => {};
 
   get busy() {
-    return this.#requests.size > 0;
+    return this.#pending > 0;
   }
 
   get loaded() {
-    return this.#worker !== null;
+    return this.#loaded;
   }
 
-  /** Download and initialize the model. */
-  /** @returns {Promise<void>} resolves once the model is loaded */
-  warm() {
-    return this.#send({ type: "warm" }, 300000);
+  /** @returns {Promise<void>} resolves once the server reports its model ready */
+  async warm() {
+    await this.check();
+    this.#loaded = true;
+    this.onReady();
   }
 
-  /** Synthesize one chunk of text. Resolves to { samples, sampleRate }. */
+  async check() {
+    const response = await fetch("/health");
+    if (!response.ok) throw new Error(`Speech server unavailable (${response.status})`);
+
+    const health = await response.json();
+    if (!health.ok) throw new Error("Speech server is still loading the voice model");
+    return health;
+  }
+
   /**
    * @param {string} text
    * @param {{ voice?: string, speed?: number }} [options]
    * @returns {Promise<AudioChunk>}
    */
-  synth(text, options = {}) {
-    return this.#send({ type: "synth", text, ...options }, 60000);
+  async synth(text, { voice, speed } = {}) {
+    this.#pending += 1;
+
+    try {
+      const response = await fetch("/v1/audio/speech", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input: text, voice, speed, response_format: "wav" }),
+      });
+
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({}));
+        throw new Error(detail.error?.message ?? `Speech failed (${response.status})`);
+      }
+
+      const decoded = await this.#decode(await response.arrayBuffer());
+      return { samples: decoded.samples, sampleRate: decoded.sampleRate };
+    } finally {
+      this.#pending -= 1;
+    }
   }
 
-  /** Give up on queued requests without unloading the model (used when the reader stops). */
   abandon() {
-    const error = new DOMException("Speech request abandoned", "AbortError");
-    for (const request of this.#requests.values()) request.reject(error);
-    this.#requests.clear();
+    // Requests are cheap and short-lived on a local network; nothing to cancel.
   }
 
-  /** Terminate the worker and free the model. Returns false when nothing was loaded. */
   dispose() {
-    if (!this.#worker) return false;
-
-    this.#worker.terminate();
-    this.#worker = null;
-
-    const error = new DOMException("Speech engine unloaded", "AbortError");
-    for (const request of this.#requests.values()) request.reject(error);
-    this.#requests.clear();
+    this.#loaded = false;
     return true;
   }
 
-  #ensureWorker() {
-    if (this.#worker) return this.#worker;
-
-    this.#worker = new Worker(new URL("./tts.worker.js", import.meta.url), { type: "module" });
-    this.#worker.onmessage = ({ data }) => this.#handle(data);
-    this.#worker.onerror = ({ message }) => {
-      for (const request of this.#requests.values()) request.reject(new Error(message));
-      this.#requests.clear();
-    };
-
-    return this.#worker;
-  }
-
-  #send(message, timeout) {
-    const id = this.#nextId++;
-    const worker = this.#ensureWorker();
-
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        if (this.#requests.delete(id)) reject(new Error("Speech engine stopped responding"));
-      }, timeout);
-
-      this.#requests.set(id, {
-        resolve: (value) => {
-          clearTimeout(timer);
-          resolve(value);
-        },
-        reject: (error) => {
-          clearTimeout(timer);
-          reject(error);
-        },
-      });
-
-      worker.postMessage({ ...message, id });
-    });
-  }
-
-  #handle(message) {
-    if (message.type === "progress") {
-      this.onProgress(message);
-      return;
-    }
-    if (message.type === "ready") {
-      this.onReady();
-      return;
-    }
-
-    const request = this.#requests.get(message.id);
-    if (!request) {
-      if (message.type === "error") this.onError(message.message);
-      return;
-    }
-
-    this.#requests.delete(message.id);
-    if (message.type === "error") request.reject(new Error(message.message));
-    else request.resolve({ samples: message.samples, sampleRate: message.sampleRate });
+  async #decode(buffer) {
+    this.#decoder ??= new OfflineAudioContext(1, 1, 24000);
+    const audio = await this.#decoder.decodeAudioData(buffer);
+    return { samples: audio.getChannelData(0).slice(), sampleRate: audio.sampleRate };
   }
 }

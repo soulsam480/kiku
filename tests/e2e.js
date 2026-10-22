@@ -44,14 +44,14 @@ Intro paragraph with a ✅ marker and a link to [docs](https://example.com/doc).
 `;
 
   try {
-    await page.goto("https://listener.sambitsahoojs.workers.dev/");
+    await page.goto("http://127.0.0.1:8787/");
     // A service worker can serve the previous build, which would invalidate every result.
     await page.evaluate(async () => {
       const registrations = await navigator.serviceWorker.getRegistrations();
       await Promise.all(registrations.map((registration) => registration.unregister()));
       await Promise.all((await caches.keys()).map((key) => caches.delete(key)));
     });
-    await page.goto("https://listener.sambitsahoojs.workers.dev/");
+    await page.goto("http://127.0.0.1:8787/");
     await page.waitForFunction(() => Boolean(document.body._x_dataStack), null, { timeout: 20000 });
     check("app boots with Alpine state", true);
 
