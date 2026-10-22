@@ -56,11 +56,18 @@ into view; the exact sentence is shown in the caption bar.
 5. The answer is spoken, then narration resumes from the exact sentence. `↺` on a log entry speaks that answer again.
 6. Interruptions are listed on the right; **Copy** copies the whole log.
 
-Markdown is converted to speech text: code blocks, images, link targets, bare URLs,
-tables and markup punctuation are rewritten so the narrator never says "asterisk" or
-"open bracket", and slashes read as words (`and/or` → "and or", `1/2` → "1 over 2").
-Text is split into ~260-character chunks on sentence boundaries, so interruption
-resumes mid-document and long documents never hit model limits.
+Markdown is converted to speech text: code blocks, images, link targets, bare URLs
+and markup punctuation are rewritten so the narrator never says "asterisk" or "open
+bracket", and slashes read as words (`and/or` → "and or", `1/2` → "1 over 2"). Emoji
+are spoken rather than dropped (`✅` → "check", `⚠️` → "warning", `→` → "to").
+
+Tables are narrated by shape: two-column tables read as term/definition pairs, normal
+tables read row by row with their column names, and comparison matrices (entities
+across the top) read one column at a time — e.g. "Blinq. Model: freemium seat.
+Entry price: $4.99." No cell is skipped.
+
+Text is split into chunks on sentence boundaries, so interruption resumes
+mid-document and long documents never hit model limits.
 
 ## Why the app has a server hop
 
