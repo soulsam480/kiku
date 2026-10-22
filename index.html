@@ -158,6 +158,7 @@
               placeholder="Ask a question…"
               autocomplete="off"
               @focus="interruptForQuestion()"
+              @keydown.escape="cancel()"
             />
             <button class="btn btn-outline sm:btn-sm" type="submit" :disabled="mode === 'answering'">Ask</button>
           </form>

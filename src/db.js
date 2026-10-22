@@ -57,16 +57,25 @@ export function getDocument(id) {
 }
 
 export async function saveDocument(document) {
-  const record = {
+  const record = plain({
     log: [],
     position: 0,
     ...document,
     id: document.id ?? crypto.randomUUID(),
     updatedAt: Date.now(),
-  };
+  });
 
   await withStore("readwrite", (store) => request(store, "put", record));
   return record;
+}
+
+/**
+ * Alpine wraps anything it renders in a reactive Proxy, and IndexedDB refuses to
+ * structured-clone a Proxy. Records are plain data, so a JSON round-trip is enough
+ * and keeps the caller from having to know about reactivity.
+ */
+function plain(value) {
+  return JSON.parse(JSON.stringify(value));
 }
 
 export function deleteDocument(id) {

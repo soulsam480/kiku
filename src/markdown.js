@@ -49,6 +49,7 @@ export function speechText(markdown) {
   text = text.replace(/[*]/g, ""); // stray emphasis markers
   text = text.replace(/<[^>]+>/g, " "); // raw html
   text = normalizeEmoji(text); // say "check", not nothing
+  text = normalizeNumbers(text); // "$1 per yr" → "1 dollar per year"
   text = text.replace(/\b([\p{L}\p{N}+$]+)(?:[\s,]+\1\b)+/giu, "$1"); // "check check" → "check"
   text = text.replace(/\band\/or\b/gi, "and or");
   text = text.replace(/(\d)\s*\/\s*(\d)/g, "$1 over $2"); // fractions
@@ -329,6 +330,96 @@ function emojiWord(segment) {
     EMOJI_WORDS.get(plain) ??
     ""
   );
+}
+
+const CURRENCY_WORDS = {
+  $: ["dollar", "dollars"],
+  "£": ["pound", "pounds"],
+  "€": ["euro", "euros"],
+  "₹": ["rupee", "rupees"],
+  "¥": ["yen", "yen"],
+};
+
+const SCALE_WORDS = { k: "thousand", m: "million", b: "billion" };
+
+const UNIT_WORDS = {
+  mo: ["month", "months"],
+  yr: ["year", "years"],
+  wk: ["week", "weeks"],
+  hr: ["hour", "hours"],
+  min: ["minute", "minutes"],
+  sec: ["second", "seconds"],
+};
+
+const ABBREVIATIONS = {
+  approx: "approximately",
+  avg: "average",
+  incl: "including",
+  excl: "excluding",
+  est: "estimated",
+  qty: "quantity",
+};
+
+/**
+ * Say money, units and abbreviations the way a person reads them:
+ * "$1 per yr" → "1 dollar per year", "£49.99/mo" → "49.99 pounds per month".
+ * Models pronounce whatever characters they are given, so this has to happen here.
+ */
+function normalizeNumbers(text) {
+  let out = text;
+
+  const unitWord = (unit, amount = "2") => {
+    const pair = UNIT_WORDS[unit.slice(0, 3).toLowerCase()];
+    if (!pair) return unit;
+    const singular = Number(amount) === 1 || amount === "1";
+    return singular ? pair[0] : pair[1];
+  };
+
+  const money = (amount, symbol) => {
+    const [singular, plural] = CURRENCY_WORDS[symbol];
+    const clean = amount.replace(/,/g, "");
+    return `${clean} ${Number(clean) === 1 ? singular : plural}`;
+  };
+
+  // £49.99/mo → 49.99 pounds per month
+  out = out.replace(
+    /\/\s*(mo|mos|yr|yrs|wk|wks|hr|hrs|min|mins|sec|secs|month|months|year|years|week|weeks|hour|hours|minute|minutes|second|seconds)\b/gi,
+    (_, unit) => ` per ${unitWord(unit, "1")}`,
+  );
+
+  out = out.replace(/\bper\s+(mo|mos|yr|yrs|wk|wks|hr|hrs|min|mins|sec|secs)\b/gi, (_, unit) => `per ${unitWord(unit, "1")}`);
+
+  // $4.99 and 1$ → 4.99 dollars, 1 dollar
+  out = out.replace(/([$£€₹¥])\s?(\d[\d,]*(?:\.\d+)?)/g, (_, symbol, amount) => money(amount, symbol));
+  out = out.replace(/(\d[\d,]*(?:\.\d+)?)\s?([$£€₹¥])/g, (_, amount, symbol) => money(amount, symbol));
+
+  // 400K → 400 thousand
+  out = out.replace(/\b(\d+(?:\.\d+)?)\s?([KkMmBb])\b/g, (_, amount, scale) => `${amount} ${SCALE_WORDS[scale.toLowerCase()]}`);
+
+  // 50% → 50 percent, 400K+ → ... plus
+  out = out.replace(/(\d)\s?%/g, "$1 percent");
+  out = out.replace(/\b(thousand|million|billion)\+/gi, "$1 plus");
+  out = out.replace(/(\d)\+/g, "$1 plus");
+
+  // 2024–2026 → 2024 to 2026 (hyphens inside words are untouched)
+  out = out.replace(/(\d)\s?[–—]\s?(\d)/g, "$1 to $2");
+
+  // 5 min → 5 minutes
+  out = out.replace(/\b(\d+(?:\.\d+)?)\s?(mo|mos|yr|yrs|wk|wks|hr|hrs|min|mins|sec|secs)\b/gi, (_, amount, unit) =>
+    `${amount} ${unitWord(unit, amount)}`,
+  );
+
+  // Standalone abbreviations
+  out = out.replace(/\be\.g\.|\beg\b/gi, "for example");
+  out = out.replace(/\bi\.e\.|\bie\b/gi, "that is");
+  out = out.replace(/\bvs\.?(?=\s|$)/gi, "versus");
+  out = out.replace(/\betc\.?(?=\s|$)/gi, "etcetera");
+  out = out.replace(/\bno\.\s?(\d)/gi, "number $1");
+  out = out.replace(/\b(approx|avg|incl|excl|est|qty)\.?(?=\s|$)/gi, (match) => {
+    return ABBREVIATIONS[match.replace(/\./g, "").toLowerCase()] ?? match;
+  });
+
+  return out;
 }
 
 /** Add a full stop to lines that would otherwise run together, and drop empty ones. */
