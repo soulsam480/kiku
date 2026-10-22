@@ -168,6 +168,8 @@ Alpine.data("app", () => {
   let answer = null;
   let answerToken = 0;
   let replayOnly = false;
+  let seekToken = 0;
+  const synthQueue = new Map(); // chunk index -> in-flight synthesis, so clicks never queue duplicates
   let askAbort = null;
   let saveTimer = null;
   let ticker = null;
@@ -423,7 +425,7 @@ Alpine.data("app", () => {
 
         // Synthesize the first chunk up front so speech starts the moment we say "playing".
         if (first < chunks.length && !pendingAudio.has(first) && !audioCache.has(first) && !inflight.has(first)) {
-          pendingAudio.set(first, await tts.synth(chunks[first], this.speechOptions()));
+          pendingAudio.set(first, await this.synthesize(first));
         }
       } catch (error) {
         this.mode = "idle";
@@ -604,6 +606,9 @@ Alpine.data("app", () => {
       const chunk = blockChunk[index];
       if (chunk === undefined) return this.fail("That part is not narrated.");
 
+      // Already reading this block: do not restart it.
+      if (this.mode === "playing" && player.snapshot()?.index === chunk) return;
+
       this.playFrom(chunk);
     },
 
@@ -612,6 +617,7 @@ Alpine.data("app", () => {
       if (!chunks.length) return;
 
       const target = Math.min(Math.max(index, 0), chunks.length - 1);
+      const token = ++seekToken;
 
       player.clear();
       snapshot = null;
@@ -624,16 +630,20 @@ Alpine.data("app", () => {
 
       if (!audio) {
         this.mode = "loading";
-        this.askStage = "preparing sentence";
+        this.askStage = `preparing sentence ${target + 1}`;
 
         try {
           await player.unlock();
-          audio = await tts.synth(chunks[target], this.speechOptions());
+          audio = await this.synthesize(target);
         } catch (error) {
+          if (token !== seekToken) return;
           this.mode = "interrupted";
           this.askStage = "";
           return this.fail(`Speech failed: ${error.message}`);
         }
+
+        // A newer jump arrived while this one was synthesizing; let it win.
+        if (token !== seekToken) return;
 
         this.askStage = "";
         pendingAudio.set(target, audio);
@@ -642,6 +652,19 @@ Alpine.data("app", () => {
       this.mode = "playing";
       await player.resume();
       this.pump();
+    },
+
+    /** Synthesize one chunk, reusing a request that is already in flight. */
+    synthesize(index) {
+      const existing = synthQueue.get(index);
+      if (existing) return existing;
+
+      const request = tts
+        .synth(chunks[index], this.speechOptions())
+        .finally(() => synthQueue.delete(index));
+
+      synthQueue.set(index, request);
+      return request;
     },
 
     /** Speak a logged answer again, then pick narration back up. */
@@ -719,8 +742,7 @@ Alpine.data("app", () => {
       for (let i = nextIndex; i < nextIndex + AHEAD && i < chunks.length; i++) {
         if (pendingAudio.has(i) || audioCache.has(i) || inflight.has(i)) continue;
         inflight.add(i);
-        tts
-          .synth(chunks[i], this.speechOptions())
+        this.synthesize(i)
           .then((audio) => pendingAudio.set(i, audio))
           .catch((error) => this.fail(`Speech failed: ${error.message}`))
           .finally(() => {
