@@ -33,13 +33,22 @@ const json = (body, status = 200) =>
 const dist = `${resolve(process.env.DIST_DIR ?? "dist")}/`;
 
 async function serveStatic(pathname) {
-  const file = Bun.file(`${dist}${pathname === "/" ? "index.html" : pathname.slice(1)}`);
-  if (await file.exists()) return new Response(file);
+  const name = pathname === "/" ? "index.html" : pathname.slice(1);
+  const file = Bun.file(`${dist}${name}`);
+  if (await file.exists()) return new Response(file, { headers: cacheHeaders(name) });
 
+  // Unknown paths fall back to the app shell.
   const index = Bun.file(`${dist}index.html`);
-  if (await index.exists()) return new Response(index);
+  if (await index.exists()) return new Response(index, { headers: cacheHeaders("index.html") });
 
   return new Response("Not built yet. Run: bun run build", { status: 404 });
+}
+
+/** Hashed assets never change; the shell must never be cached. */
+function cacheHeaders(name) {
+  if (name.startsWith("assets/")) return { "Cache-Control": "public, max-age=31536000, immutable" };
+  if (name.endsWith(".html")) return { "Cache-Control": "no-store" };
+  return { "Cache-Control": "no-cache" };
 }
 
 function authorized(request) {

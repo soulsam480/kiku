@@ -31,7 +31,6 @@ export function saveSession(session) {
 }
 
 /** One id per listening session, reused on every model call so the provider can cache the document prefix. */
-/** One id per listening session, reused on every model call so the provider can cache the document prefix. */
 /** @returns {string} */
 export function newSessionId() {
   return crypto.randomUUID();
