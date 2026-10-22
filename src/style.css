@@ -1,0 +1,87 @@
+@import "tailwindcss";
+@plugin "daisyui" {
+  themes: dark --default;
+}
+
+[x-cloak] {
+  display: none !important;
+}
+
+#preview h1,
+#preview h2,
+#preview h3 {
+  font-weight: 600;
+  margin-top: 1.4rem;
+  line-height: 1.35;
+}
+
+#preview h1:first-child,
+#preview h2:first-child,
+#preview h3:first-child,
+#preview p:first-child {
+  margin-top: 0;
+}
+
+#preview h1 {
+  font-size: 1.3rem;
+}
+
+#preview h2 {
+  font-size: 1.1rem;
+}
+
+#preview h3 {
+  font-size: 1rem;
+}
+
+#preview p,
+#preview ul,
+#preview ol,
+#preview pre,
+#preview blockquote,
+#preview table {
+  margin-top: 0.9rem;
+  line-height: 1.7;
+}
+
+#preview table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9em;
+}
+
+#preview th,
+#preview td {
+  border-bottom: 1px solid var(--color-base-300);
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+#preview ul {
+  list-style: disc;
+  padding-left: 1.2rem;
+}
+
+#preview ol {
+  list-style: decimal;
+  padding-left: 1.2rem;
+}
+
+#preview code {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 0.85em;
+}
+
+#preview pre {
+  background: var(--color-base-300);
+  padding: 0.75rem;
+  border-radius: var(--radius-field);
+  overflow: auto;
+}
+
+#preview blockquote {
+  border-left: 2px solid var(--color-base-300);
+  padding-left: 0.75rem;
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+}

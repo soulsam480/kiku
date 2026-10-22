@@ -1,0 +1,8 @@
+node_modules
+dist
+.wrangler
+.playwright-cli
+.playwright-cli-dev.log
+.env
+.DS_Store
+data/corpus.md

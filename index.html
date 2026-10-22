@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Listener</title>
+    <link rel="icon" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#0f1115" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Listener" />
+  </head>
+  <body class="flex h-dvh flex-col overflow-hidden bg-base-100 text-base-content" x-data="app">
+    <header class="shrink-0 border-b border-base-300 bg-base-100">
+      <div class="mx-auto flex w-full max-w-6xl items-center gap-2 px-4 py-3">
+        <h1 class="text-lg font-semibold tracking-tight">Listener</h1>
+        <span
+          class="badge badge-sm whitespace-nowrap"
+          :class="mode === 'playing' ? 'badge-success' : 'badge-ghost'"
+          x-text="statusLabel"
+        ></span>
+        <span class="grow"></span>
+        <button class="btn btn-sm btn-ghost" @click="openSettings()">Settings</button>
+      </div>
+    </header>
+
+    <main class="mx-auto grid w-full max-w-6xl min-h-0 flex-1 gap-3 overflow-y-auto p-3 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:overflow-hidden">
+      <section class="flex min-h-[55vh] flex-col overflow-hidden rounded-box bg-base-200 lg:min-h-0">
+        <div class="flex shrink-0 items-center justify-between gap-2 border-b border-base-300 px-4 py-2">
+          <h2 class="text-sm font-medium text-base-content/70">Document</h2>
+          <span class="text-xs text-base-content/50" x-text="chunkCount ? chunkCount + ' sentences' : ''"></span>
+        </div>
+
+        <textarea
+          x-show="editing"
+          x-model="doc"
+          class="min-h-0 flex-1 resize-none bg-transparent p-4 font-mono text-sm outline-none"
+          placeholder="Paste markdown here…"
+        ></textarea>
+
+        <article
+          x-show="!editing"
+          x-ref="preview"
+          class="min-h-0 flex-1 overflow-auto p-4 text-[0.95rem] leading-relaxed [&>*]:max-w-[70ch]"
+        ></article>
+
+        <div class="flex shrink-0 items-center gap-2 border-t border-base-300 px-4 py-2">
+          <button class="btn btn-sm" @click="start()">Start listening</button>
+          <button class="btn btn-sm btn-ghost" @click="editing = !editing" x-text="editing ? 'Preview' : 'Edit text'"></button>
+        </div>
+      </section>
+
+      <section class="flex min-h-[30vh] flex-col overflow-hidden rounded-box bg-base-200 lg:min-h-0">
+        <div class="flex shrink-0 items-center justify-between gap-2 border-b border-base-300 px-4 py-2">
+          <h2 class="text-sm font-medium text-base-content/70">Interruptions</h2>
+          <button class="btn btn-xs btn-ghost" @click="copyLog()" x-text="copied ? 'Copied' : 'Copy'"></button>
+        </div>
+
+        <p class="p-4 text-sm text-base-content/50" x-show="log.length === 0">None yet. Press <kbd class="kbd kbd-sm">i</kbd> while listening.</p>
+
+        <ul class="min-h-0 flex-1 space-y-3 overflow-auto p-3">
+          <template x-for="entry in log" :key="entry.at">
+            <li class="rounded-box bg-base-300/40 p-3">
+              <div class="flex items-center gap-2 text-xs text-base-content/50">
+                <span x-text="formatTime(entry.at)"></span>
+                <span>· sentence</span>
+                <span x-text="entry.chunk + 1"></span>
+                <button class="btn btn-xs btn-ghost ml-auto" @click="replay(entry)" aria-label="Speak this answer again">
+                  <svg viewBox="0 0 16 16" class="size-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                    <path d="M2.5 8a5.5 5.5 0 1 1 1.7 4" />
+                    <path d="M2 12.5V8.8h3.7" />
+                  </svg>
+                </button>
+              </div>
+              <p class="mt-1 text-sm font-medium" x-text="entry.question"></p>
+              <p class="mt-1 line-clamp-4 text-sm text-base-content/70" x-text="entry.answer"></p>
+            </li>
+          </template>
+        </ul>
+      </section>
+    </main>
+
+    <footer class="shrink-0 border-t border-base-300 bg-base-100">
+      <div class="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-3">
+        <div class="flex items-center gap-2 text-xs text-base-content/50">
+          <span x-text="progressText"></span>
+          <span class="grow"></span>
+          <span class="hidden sm:inline">space pause · ←→ sentence · i ask · m talk</span>
+        </div>
+
+        <p class="line-clamp-2 min-h-10 text-sm leading-snug text-base-content/90" x-text="caption"></p>
+
+        <div class="flex items-center gap-2">
+          <button class="btn btn-sm btn-square btn-ghost" @click="seek(-1)" aria-label="Previous sentence">
+            <svg viewBox="0 0 16 16" class="size-4" fill="currentColor"><path d="M4 3h2v10H4zM13 3v10L6.5 8z" /></svg>
+          </button>
+          <button class="btn btn-sm btn-square" @click="togglePlay()" aria-label="Play or pause">
+            <svg x-show="mode !== 'playing'" viewBox="0 0 16 16" class="size-4" fill="currentColor"><path d="M5 3l8 5-8 5z" /></svg>
+            <svg x-show="mode === 'playing'" viewBox="0 0 16 16" class="size-4" fill="currentColor"><path d="M4 3h3v10H4zM9 3h3v10H9z" /></svg>
+          </button>
+          <button class="btn btn-sm btn-square btn-ghost" @click="seek(1)" aria-label="Next sentence">
+            <svg viewBox="0 0 16 16" class="size-4" fill="currentColor"><path d="M10 3h2v10h-2zM3 3v10l6.5-5z" /></svg>
+          </button>
+          <button class="btn btn-sm btn-square btn-ghost" @click="stop()" aria-label="Stop">
+            <svg viewBox="0 0 16 16" class="size-4" fill="currentColor"><rect x="4" y="4" width="8" height="8" rx="1" /></svg>
+          </button>
+
+          <button
+            type="button"
+            class="btn btn-sm btn-square"
+            :class="micState === 'recording' ? 'btn-error' : 'btn-ghost'"
+            :disabled="micState === 'transcribing'"
+            @click="toggleMic()"
+            :aria-label="micState === 'recording' ? 'Stop and transcribe' : 'Ask by voice'"
+          >
+            <svg x-show="micState !== 'recording'" viewBox="0 0 16 16" class="size-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+              <rect x="6" y="2" width="4" height="7" rx="2" />
+              <path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2" />
+            </svg>
+            <svg x-show="micState === 'recording'" viewBox="0 0 16 16" class="size-4" fill="currentColor"><rect x="4" y="4" width="8" height="8" rx="1" /></svg>
+          </button>
+
+          <form class="flex min-w-0 flex-1 gap-2" @submit.prevent="ask()">
+            <input
+              x-ref="askInput"
+              x-model="question"
+              class="input input-sm min-w-0 flex-1"
+              placeholder="Interrupt and ask a question…"
+              autocomplete="off"
+              @focus="interruptForQuestion()"
+            />
+            <button class="btn btn-sm" type="submit" :disabled="mode === 'answering'">Ask</button>
+          </form>
+        </div>
+      </div>
+    </footer>
+
+    <div class="toast toast-top toast-center z-50" x-show="error" x-cloak>
+      <div class="alert alert-error max-w-lg">
+        <span class="text-sm" x-text="error"></span>
+        <button class="btn btn-xs btn-ghost" @click="clearError()">Dismiss</button>
+      </div>
+    </div>
+
+    <dialog x-ref="settingsDialog" class="modal">
+      <div class="modal-box">
+        <h3 class="text-base font-semibold">Settings</h3>
+        <div class="mt-3 grid gap-3">
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">API base URL</legend>
+            <input x-model="draft.baseUrl" class="input w-full" placeholder="https://api.openai.com/v1" />
+          </fieldset>
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">API key</legend>
+            <input x-model="draft.apiKey" type="password" class="input w-full" placeholder="sk-…" />
+          </fieldset>
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Model</legend>
+            <input x-model="draft.model" class="input w-full" placeholder="gpt-4o-mini" />
+          </fieldset>
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Voice</legend>
+            <select x-model="draft.voice" class="select w-full">
+              <option value="af_heart">Heart · US female</option>
+              <option value="af_bella">Bella · US female</option>
+              <option value="am_michael">Michael · US male</option>
+              <option value="am_fenrir">Fenrir · US male</option>
+              <option value="bf_emma">Emma · UK female</option>
+              <option value="bm_george">George · UK male</option>
+            </select>
+          </fieldset>
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Speed · <span x-text="Number(draft.speed).toFixed(2)"></span></legend>
+            <input x-model="draft.speed" type="range" min="0.6" max="1.4" step="0.05" class="range w-full" />
+          </fieldset>
+        </div>
+        <div class="modal-action">
+          <button class="btn btn-sm" @click="saveSettings()">Save</button>
+          <button class="btn btn-sm btn-ghost" @click="$refs.settingsDialog.close()">Cancel</button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
