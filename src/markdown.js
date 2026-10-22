@@ -203,10 +203,9 @@ function isMatrix(labels, columns) {
 /** Read one column at a time: "Blinq. Model: freemium seat. Entry price: $5." */
 function columnWise(data, labels) {
   const headers = labels.slice(1);
-  const shown = Math.min(headers.length, 10);
   const blocks = [];
 
-  for (let column = 0; column < shown; column += 1) {
+  for (let column = 0; column < headers.length; column += 1) {
     const values = data
       .map((cells) => {
         const value = cells[column + 1];
@@ -219,16 +218,13 @@ function columnWise(data, labels) {
   }
 
   const intro = `Table with ${data.length} rows and ${headers.length} columns.`;
-  const tail = headers.length > shown ? `And ${headers.length - shown} more columns.` : "";
 
-  return [intro, ...blocks, tail].filter(Boolean).join("\n\n");
+  return [intro, ...blocks].join("\n\n");
 }
 
-/** Read row by row with column labels, keeping every column. */
+/** Read row by row with column labels, keeping every column and every row. */
 function rowWise(data, labels) {
-  const shown = data.length > 20 ? data.slice(0, 20) : data;
-
-  const lines = shown.map((cells) => {
+  const lines = data.map((cells) => {
     const [first = "", ...rest] = cells;
     const details = rest
       .map((cell, index) => {
@@ -241,13 +237,9 @@ function rowWise(data, labels) {
     return details ? `${first}. ${details}.` : `${first}.`;
   });
 
-  const intro =
-    shown.length < data.length
-      ? `Table with ${data.length} rows and ${Math.max(labels.length, ...data.map((c) => c.length))} columns, first ${shown.length}.`
-      : `Table with ${data.length} row${data.length === 1 ? "" : "s"}. Columns: ${labels.filter(Boolean).join(", ")}.`;
-  const tail = shown.length < data.length ? `And ${data.length - shown.length} more rows.` : "";
+  const intro = `Table with ${data.length} row${data.length === 1 ? "" : "s"}. Columns: ${labels.filter(Boolean).join(", ")}.`;
 
-  return [intro, ...lines, tail].filter(Boolean).join("\n\n");
+  return [intro, ...lines].join("\n\n");
 }
 
 /** Cells that carry no information when spoken. */
