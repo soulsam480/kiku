@@ -1,4 +1,4 @@
-import { relay } from "./relay.js";
+import { relay, configureRelay } from "./relay.js";
 import { huggingface } from "./models.js";
 
 const ISOLATION_HEADERS = {
@@ -11,9 +11,14 @@ export default {
     const { pathname } = new URL(request.url);
 
     let response;
-    if (pathname.startsWith("/llm/")) response = await relay(request);
-    else if (pathname.startsWith("/hf/")) response = await huggingface(request);
-    else response = await env.ASSETS.fetch(request);
+    if (pathname.startsWith("/llm/")) {
+      configureRelay(env);
+      response = await relay(request);
+    } else if (pathname.startsWith("/hf/")) {
+      response = await huggingface(request);
+    } else {
+      response = await env.ASSETS.fetch(request);
+    }
 
     // Speech synthesis runs multi-threaded only on a cross-origin isolated page.
     const headers = new Headers(response.headers);

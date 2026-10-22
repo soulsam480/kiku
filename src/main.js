@@ -190,6 +190,7 @@ Alpine.data("app", () => {
     mode: "idle",
     micState: "idle",
     askStage: "",
+    tab: "doc",
     doc: "",
     docTitle: "Untitled",
     question: "",
@@ -782,6 +783,14 @@ Alpine.data("app", () => {
     renderPreview() {
       const preview = this.$refs.preview;
       preview.innerHTML = marked.parse(this.doc || "");
+
+      // Wide tables scroll sideways instead of squeezing every cell into a thin column.
+      preview.querySelectorAll("table").forEach((table) => {
+        const wrapper = document.createElement("div");
+        wrapper.className = "overflow-x-auto";
+        table.replaceWith(wrapper);
+        wrapper.append(table);
+      });
 
       previewBlocks = [...preview.querySelectorAll("p, h1, h2, h3, h4, h5, h6, li, tr, blockquote, pre")].filter(
         (element) => !element.querySelector("p, li, tr"),
