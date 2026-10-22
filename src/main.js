@@ -10,6 +10,8 @@ import { Mic } from "./mic.js";
 import { Stt } from "./stt.js";
 import { askQuestion, buildContext } from "./llm.js";
 import { loadSettings, saveSettings, newSessionId } from "./store.js";
+import { VOICE_GROUPS, VOICES } from "./voices.js";
+import { playSample } from "./preview.js";
 import {
   listDocuments,
   saveDocument,
@@ -49,6 +51,8 @@ Alpine.data("app", () => {
   let replayOnly = false;
   let seekToken = 0;
   const synthQueue = new Map(); // chunk index -> in-flight synthesis, so clicks never queue duplicates
+  const previewCache = new Map(); // voice id -> synthesized sample
+  let previewContext = null;
   let askAbort = null;
   let saveTimer = null;
   let ticker = null;
@@ -85,6 +89,9 @@ Alpine.data("app", () => {
     library: [],
     settings: loadSettings(),
     draft: loadSettings(),
+    voiceGroups: VOICE_GROUPS,
+    voices: VOICES,
+    previewing: "",
     editing: true,
     unloaded: false,
     deployedAt: import.meta.env.DEV ? "" : __BUILD_TIME__,
@@ -818,8 +825,39 @@ Alpine.data("app", () => {
     },
 
     openSettings() {
+      if (this.mode === "playing") {
+        player.pause();
+        this.mode = "paused";
+      }
+      this.previewing = "";
       this.draft = { ...this.settings };
       this.$refs.settingsDialog.showModal();
+    },
+
+    async previewVoice(voiceId) {
+      if (this.previewing) return;
+
+      this.previewing = voiceId;
+      this.clearError();
+
+      try {
+        const audio = await this.voiceSample(voiceId);
+        playSample(audio);
+      } catch (error) {
+        if (error.name !== "AbortError") this.fail(`Could not play that voice: ${error.message}`);
+      } finally {
+        this.previewing = "";
+      }
+    },
+
+    voiceSample(voiceId) {
+      const cached = previewCache.get(voiceId);
+      if (cached) return Promise.resolve(cached);
+
+      return tts.synth(PREVIEW_TEXT, { voice: voiceId, speed: 1 }).then((audio) => {
+        previewCache.set(voiceId, audio);
+        return audio;
+      });
     },
 
     saveSettings() {
