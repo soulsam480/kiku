@@ -1,9 +1,13 @@
 /**
  * Client for the Kokoro worker. One request in, one synthesized chunk out;
  * requests are answered in the order they were sent.
+ *
+ * The worker is created on first use and can be terminated with `dispose()` to give
+ * the model's memory back. The next request simply starts a fresh worker, which
+ * reloads the weights from the browser cache.
  */
 export class Tts {
-  #worker;
+  #worker = null;
   #requests = new Map();
   #nextId = 1;
 
@@ -11,13 +15,12 @@ export class Tts {
   onReady = () => {};
   onError = () => {};
 
-  constructor() {
-    this.#worker = new Worker(new URL("./tts.worker.js", import.meta.url), { type: "module" });
-    this.#worker.onmessage = ({ data }) => this.#handle(data);
-    this.#worker.onerror = ({ message }) => {
-      for (const request of this.#requests.values()) request.reject(new Error(message));
-      this.#requests.clear();
-    };
+  get busy() {
+    return this.#requests.size > 0;
+  }
+
+  get loaded() {
+    return this.#worker !== null;
   }
 
   /** Download and initialize the model. */
@@ -30,8 +33,35 @@ export class Tts {
     return this.#send({ type: "synth", text, ...options }, 60000);
   }
 
+  /** Terminate the worker and free the model. Returns false when nothing was loaded. */
+  dispose() {
+    if (!this.#worker) return false;
+
+    this.#worker.terminate();
+    this.#worker = null;
+
+    for (const request of this.#requests.values()) request.reject(new Error("Speech engine unloaded"));
+    this.#requests.clear();
+    return true;
+  }
+
+  #ensureWorker() {
+    if (this.#worker) return this.#worker;
+
+    this.#worker = new Worker(new URL("./tts.worker.js", import.meta.url), { type: "module" });
+    this.#worker.onmessage = ({ data }) => this.#handle(data);
+    this.#worker.onerror = ({ message }) => {
+      for (const request of this.#requests.values()) request.reject(new Error(message));
+      this.#requests.clear();
+    };
+
+    return this.#worker;
+  }
+
   #send(message, timeout) {
     const id = this.#nextId++;
+    const worker = this.#ensureWorker();
+
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         if (this.#requests.delete(id)) reject(new Error("Speech engine stopped responding"));
@@ -48,7 +78,7 @@ export class Tts {
         },
       });
 
-      this.#worker.postMessage({ ...message, id });
+      worker.postMessage({ ...message, id });
     });
   }
 
