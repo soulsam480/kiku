@@ -365,6 +365,7 @@ Alpine.data("app", () => {
       answerToken += 1;
       tts.abandon();
       stt.abandon();
+      synthQueue.clear();
       player.clear();
       snapshot = null;
       nextIndex = 0;
@@ -524,6 +525,7 @@ Alpine.data("app", () => {
       const token = ++seekToken;
 
       tts.abandon();
+      synthQueue.clear();
       inflight = new Set();
 
       player.clear();
@@ -543,10 +545,26 @@ Alpine.data("app", () => {
           await player.unlock();
           audio = await this.synthesize(target);
         } catch (error) {
-          if (token !== seekToken || error.name === "AbortError") return;
-          this.mode = "interrupted";
-          this.askStage = "";
-          return this.fail(`Speech failed: ${error.message}`);
+          if (token !== seekToken) return;
+
+          synthQueue.delete(target);
+          if (error.name === "AbortError") {
+            // A jump abandoned this request while it was in flight; ask once more.
+            try {
+              audio = await this.synthesize(target);
+            } catch {
+              audio = null;
+            }
+            if (!audio) {
+              this.mode = "interrupted";
+              this.askStage = "";
+              return;
+            }
+          } else {
+            this.mode = "interrupted";
+            this.askStage = "";
+            return this.fail(`Speech failed: ${error.message}`);
+          }
         }
 
         // A newer jump arrived while this one was synthesizing; let it win.
