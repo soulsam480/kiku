@@ -7,6 +7,7 @@ export const DEFAULT_SETTINGS = {
   model: "gpt-4o-mini",
   voice: "af_heart",
   speed: 1,
+  speakAnswers: true,
 };
 
 export function loadSettings() {

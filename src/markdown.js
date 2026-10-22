@@ -65,11 +65,22 @@ export function speechText(markdown) {
 
 /** Split text into chunks short enough for one Kokoro pass, cutting on sentence ends. */
 export function splitIntoChunks(text) {
-  const chunks = [];
+  return splitIntoBlocks(text).flatMap((block) => block.chunks);
+}
+
+/**
+ * Same chunking, but keeps each spoken paragraph together with its chunks so the
+ * reader can highlight the sentence being narrated.
+ */
+export function splitIntoBlocks(text) {
+  const blocks = [];
 
   for (const paragraph of text.split(/\n{2,}/)) {
+    const chunks = [];
+
     for (const sentence of splitSentences(paragraph)) {
       const previous = chunks[chunks.length - 1];
+
       if (previous && previous.length + sentence.length + 1 <= MAX_CHUNK_CHARS) {
         chunks[chunks.length - 1] = `${previous} ${sentence}`;
       } else if (sentence.length <= MAX_SENTENCE_CHARS) {
@@ -78,9 +89,11 @@ export function splitIntoChunks(text) {
         chunks.push(...splitLongSentence(sentence));
       }
     }
+
+    if (chunks.length) blocks.push({ text: chunks.join(" "), chunks });
   }
 
-  return chunks;
+  return blocks;
 }
 
 /**

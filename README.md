@@ -12,14 +12,15 @@ npm install
 npm run dev           # http://localhost:5173
 ```
 
-Production build and a temporary Cloudflare deployment:
+Production build and deploy:
 
 ```sh
-npm run deploy        # vite build + wrangler deploy --temporary
+npm run deploy        # vite build + wrangler deploy
 ```
 
-`wrangler deploy --temporary` needs no account. It prints a `*.workers.dev` URL and a
-claim link that stays valid for 60 minutes — claim it to keep the deployment.
+This deploys the Worker named `listener` (see `wrangler.jsonc`) to your Cloudflare
+account. For a throwaway deploy without logging in, use
+`npx wrangler deploy --temporary`.
 
 ## Configure
 
@@ -32,14 +33,28 @@ Open **Settings** once. Values live in this browser's storage; there is no `.env
 | Model | e.g. `gpt-4o-mini`, or `minimax-m3.1-flash-free` for OpenCode Go |
 | Voice | Six Kokoro voices, US and UK |
 | Speed | 0.6× – 1.4× |
+| Speak answers aloud | Off keeps answers text-only in the log, so narration is never interrupted by audio |
+
+## Storage
+
+Documents live in IndexedDB (`listener` → `documents`), not localStorage. Each record
+keeps its markdown, title, reading position and interruption log, so switching
+documents resumes exactly where you stopped and keeps the questions with the text they
+were asked about. The **Documents** dialog lists them by last activity, with open and
+delete; a document saved by the older localStorage version is migrated automatically
+on first load. Settings still live in localStorage.
+
+During narration the paragraph being spoken is highlighted in the preview and scrolled
+into view; the exact sentence is shown in the caption bar.
 
 ## Use
 
 1. Paste markdown, press **Start listening**.
 2. `space` pauses and resumes, `←` `→` jump one sentence, `i` interrupts and focuses the ask box, `m` talks, `esc` cancels.
-3. Clicking the ask box or the mic interrupts. Type or speak, then send. The badge shows `sending`, `thinking`, `speaking`.
-4. The answer is spoken, then narration resumes from the exact sentence. `↺` on a log entry speaks that answer again.
-5. Interruptions are listed on the right; **Copy** copies the whole log.
+3. **Click any paragraph, heading, list item or table row in the preview** to start narration there — clicking a heading is the fastest way to jump to a section.
+4. Clicking the ask box or the mic interrupts. Type or speak, then send. The badge shows `sending`, `thinking`, `speaking`.
+5. The answer is spoken, then narration resumes from the exact sentence. `↺` on a log entry speaks that answer again.
+6. Interruptions are listed on the right; **Copy** copies the whole log.
 
 Markdown is converted to speech text: code blocks, images, link targets, bare URLs,
 tables and markup punctuation are rewritten so the narrator never says "asterisk" or

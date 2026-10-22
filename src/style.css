@@ -7,12 +7,17 @@
   display: none !important;
 }
 
+#preview > * {
+  max-width: 72ch;
+}
+
 #preview h1,
 #preview h2,
 #preview h3 {
   font-weight: 600;
-  margin-top: 1.4rem;
-  line-height: 1.35;
+  margin-top: 1.6rem;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
 }
 
 #preview h1:first-child,
@@ -84,4 +89,63 @@
   border-left: 2px solid var(--color-base-300);
   padding-left: 0.75rem;
   color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+}
+
+#preview hr {
+  margin: 1.5rem 0;
+  border-color: var(--color-base-300);
+}
+
+#preview li + li {
+  margin-top: 0.35rem;
+}
+
+#preview h1 + p,
+#preview h2 + p,
+#preview h3 + p {
+  margin-top: 0.5rem;
+}
+
+/* The paragraph being narrated. */
+#preview .active-block {
+  background: color-mix(in oklab, var(--color-primary) 14%, transparent);
+  box-shadow: 0 0 0 6px color-mix(in oklab, var(--color-primary) 14%, transparent);
+  border-radius: 0.25rem;
+  transition: background-color 200ms ease;
+}
+
+/* Table rows cannot show box-shadow or radius, so paint the cells instead. */
+#preview tr.active-block {
+  background: none;
+  box-shadow: none;
+}
+
+#preview tr.active-block > td,
+#preview tr.active-block > th {
+  background: color-mix(in oklab, var(--color-primary) 20%, transparent);
+  transition: background-color 200ms ease;
+}
+
+/* Clicking any block starts narration there. */
+#preview p,
+#preview li,
+#preview tr,
+#preview h1,
+#preview h2,
+#preview h3,
+#preview h4,
+#preview blockquote {
+  cursor: pointer;
+  border-radius: 0.25rem;
+}
+
+#preview p:hover,
+#preview li:hover,
+#preview tr:hover,
+#preview h1:hover,
+#preview h2:hover,
+#preview h3:hover,
+#preview h4:hover,
+#preview blockquote:hover {
+  background: color-mix(in oklab, var(--color-base-content) 7%, transparent);
 }

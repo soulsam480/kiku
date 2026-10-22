@@ -1,27 +1,164 @@
 import Alpine from "alpinejs";
 import { marked } from "marked";
 import { tinykeys } from "tinykeys";
-import { speechText, splitIntoChunks, takeSentences, paragraphs } from "./markdown.js";
+import { speechText, splitIntoBlocks, takeSentences, paragraphs } from "./markdown.js";
 import { Player } from "./player.js";
 import { Tts } from "./tts.js";
 import { Mic } from "./mic.js";
 import { Stt } from "./stt.js";
 import { askQuestion, buildContext } from "./llm.js";
-import { loadSession, saveSession, loadSettings, saveSettings, newSessionId } from "./store.js";
+import { loadSettings, saveSettings, newSessionId } from "./store.js";
+import {
+  listDocuments,
+  saveDocument,
+  deleteDocument,
+  takeLegacySession,
+  titleOf,
+} from "./db.js";
 import "./style.css";
 
 const AHEAD = 3; // chunks synthesized ahead of playback
 const CONTEXT_CHARS = 12000; // document text sent to the model when it fits
+const AUDIO_CACHE_LIMIT = 40; // recently played chunks kept for instant seeking
+
+const escapeHtml = (text) =>
+  text.replace(/[&<>"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[character]);
+
+const wordsOf = (text) =>
+  text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+
+// Whisper invents these for silence or room noise; they must never reach the model.
+const HALLUCINATIONS = new Set([
+  "you",
+  "thank you",
+  "thank you so much",
+  "thanks",
+  "thanks for watching",
+  "thank you for watching",
+  "please subscribe",
+  "subscribe",
+  "bye",
+  "bye bye",
+  "okay",
+  "ok",
+  "yeah",
+  "mm",
+  "hmm",
+  "uh",
+  "um",
+  "silence",
+  "blank audio",
+  "music",
+  "see you next time",
+]);
+
+/** True when a microphone clip sounds like actual speech and reads like a question. */
+function usableClip(samples) {
+  if (samples.length / 16000 < 0.4) return false;
+
+  let energy = 0;
+  for (const sample of samples) energy += sample * sample;
+  // Loose gate: only obviously silent clips are rejected, so quiet speech still gets through.
+  return Math.sqrt(energy / samples.length) > 0.003;
+}
+
+function usableTranscript(text) {
+  const words = text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (words.length < 3) return false;
+  return !HALLUCINATIONS.has(words);
+}
+
+/**
+ * Map each spoken chunk onto the rendered paragraph that contains it, so the reader
+ * can highlight where narration is even though the audio text is normalised.
+ *
+ * Blocks are scored by the *distinctive* words they share with the chunk (rare words
+ * count for more), and only a small window around the cursor is considered. Synthetic
+ * narration such as "Table with 6 rows. Columns: …" therefore lands on the table
+ * itself instead of drifting to some later paragraph.
+ */
+function mapChunksToBlocks(chunkTexts, blocks) {
+  const blockWords = blocks.map((block) => new Set(wordsOf(block.textContent)));
+
+  const frequency = new Map();
+  for (const words of blockWords) {
+    for (const word of words) frequency.set(word, (frequency.get(word) ?? 0) + 1);
+  }
+  const weight = (word) => 1 / (frequency.get(word) ?? 1);
+
+  const mapping = [];
+  let cursor = 0;
+
+  for (const chunk of chunkTexts) {
+    const words = [...new Set(wordsOf(chunk))];
+    const from = Math.max(0, cursor - 2);
+    const to = Math.min(blocks.length - 1, cursor + 8);
+
+    let best = cursor;
+    let bestScore = 0;
+
+    for (let block = from; block <= to; block += 1) {
+      let score = 0;
+      for (const word of words) {
+        if (blockWords[block].has(word)) score += weight(word);
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        best = block;
+      }
+    }
+
+    mapping.push(bestScore > 0 ? best : cursor);
+    cursor = best;
+  }
+
+  return mapping;
+}
+
+/**
+ * Reverse the chunk mapping: for every rendered block, the chunk narration should
+ * start at. Blocks the narrator skips (code, images) fall through to the next one.
+ */
+function invert(chunkBlock, blockCount) {
+  const blockChunk = new Array(blockCount).fill(undefined);
+
+  chunkBlock.forEach((block, chunk) => {
+    if (blockChunk[block] === undefined) blockChunk[block] = chunk;
+  });
+
+  let next;
+  for (let block = blockCount - 1; block >= 0; block -= 1) {
+    if (blockChunk[block] === undefined) blockChunk[block] = next;
+    else next = blockChunk[block];
+  }
+
+  return blockChunk;
+}
 
 Alpine.data("app", () => {
   const player = new Player();
   const tts = new Tts();
   const mic = new Mic();
   const stt = new Stt();
-  const session = loadSession();
 
   let chunks = [];
-  let contextBlocks = [];
+  let blocks = []; // spoken paragraphs, each with its chunks
+  let previewBlocks = []; // rendered markdown blocks, for highlighting
+  let chunkBlock = []; // chunk index -> preview block index
+  let blockChunk = []; // preview block index -> chunk index
+  let activeBlock = null;
+  let contextBlocks = []; // raw markdown blocks, for the model
+  let currentDoc = null; // the IndexedDB record being read
+  let llmSessionId = newSessionId();
   let nextIndex = 0;
   let preparedDoc = "";
   let snapshot = null; // position captured when narration was interrupted
@@ -36,8 +173,7 @@ Alpine.data("app", () => {
   let ticker = null;
   let micTimer = null;
   let unbindKeys = null;
-
-  const AUDIO_CACHE_LIMIT = 40;
+  let sectionIndex = []; // headings, with the chunk narration should start at
 
   // Recently played chunks stay in memory so prev/next is instant.
   const remember = (index, audio) => {
@@ -54,7 +190,8 @@ Alpine.data("app", () => {
     mode: "idle",
     micState: "idle",
     askStage: "",
-    doc: session.doc ?? "",
+    doc: "",
+    docTitle: "Untitled",
     question: "",
     caption: "",
     progressText: "0 / 0",
@@ -62,10 +199,11 @@ Alpine.data("app", () => {
     error: "",
     copied: false,
     modelProgress: "",
-    log: session.log ?? [],
+    log: [],
+    library: [],
     settings: loadSettings(),
     draft: loadSettings(),
-    editing: !session.doc,
+    editing: true,
 
     get statusLabel() {
       const parts = [this.mode];
@@ -75,16 +213,6 @@ Alpine.data("app", () => {
     },
 
     init() {
-      if (this.doc) {
-        chunks = splitIntoChunks(speechText(this.doc));
-        contextBlocks = paragraphs(this.doc);
-        nextIndex = Math.min(session.nextIndex ?? 0, chunks.length);
-        preparedDoc = this.doc;
-        this.refreshCounters();
-        this.caption = chunks[nextIndex] ?? "";
-        this.$nextTick(() => this.renderPreview(this.doc));
-      }
-
       tts.onProgress = (progress) => {
         this.modelProgress = progress.total
           ? `model ${Math.round((progress.loaded / progress.total) * 100)}%`
@@ -94,6 +222,7 @@ Alpine.data("app", () => {
         this.modelProgress = "";
       };
       tts.onError = (message) => this.fail(message);
+
       stt.onProgress = (progress) => {
         this.modelProgress = progress.total
           ? `whisper ${Math.round((progress.loaded / progress.total) * 100)}%`
@@ -135,14 +264,109 @@ Alpine.data("app", () => {
         },
       });
 
-      if (import.meta.env.DEV) window.listener = { player, tts, stt };
+      if (import.meta.env.DEV) {
+        window.listener = {
+          player,
+          tts,
+          stt,
+          mapping: () => ({
+            chunkBlock,
+            blockTags: previewBlocks.map((block) => block.tagName),
+            blockTexts: previewBlocks.map((block) => block.textContent.replace(/\s+/g, " ").trim().slice(0, 40)),
+            chunks,
+          }),
+        };
+      }
+
+      this.$refs.preview?.addEventListener("click", (event) => this.jumpToBlock(event.target));
+
+      this.boot();
     },
 
     destroy() {
       clearInterval(ticker);
       clearTimeout(micTimer);
+      clearTimeout(saveTimer);
       unbindKeys?.();
       mic.release();
+    },
+
+    /** Restore the last document the listener had open, migrating old storage once. */
+    async boot() {
+      try {
+        const migrated = await takeLegacySession();
+        const documents = await listDocuments();
+        const document = migrated ?? documents[0];
+        if (document) this.open(document);
+        this.library = await listDocuments();
+      } catch (error) {
+        this.fail(`Could not open saved documents: ${error.message}`);
+      }
+    },
+
+    open(document) {
+      currentDoc = document;
+      this.doc = document.markdown;
+      this.docTitle = document.title ?? titleOf(document.markdown);
+      this.log = document.log ?? [];
+      this.prepare(document.markdown, document.position ?? 0);
+      this.editing = false;
+      this.$refs.libraryDialog?.close();
+
+      // Opening counts as recent activity, so reloads restore this document.
+      saveDocument(currentDoc)
+        .then((saved) => {
+          currentDoc = saved;
+        })
+        .catch(() => {});
+    },
+
+    newDocument() {
+      askAbort?.abort();
+      answerToken += 1;
+      player.clear();
+
+      currentDoc = null;
+      chunks = [];
+      blocks = [];
+      contextBlocks = [];
+      nextIndex = 0;
+      snapshot = null;
+      pendingAudio = new Map();
+      audioCache = new Map();
+      inflight = new Set();
+      answer = null;
+
+      this.doc = "";
+      this.docTitle = "Untitled";
+      this.log = [];
+      this.caption = "";
+      this.mode = "idle";
+      this.askStage = "";
+      this.editing = true;
+      this.refreshCounters();
+
+      if (this.$refs.preview) this.$refs.preview.innerHTML = "";
+      this.$refs.libraryDialog?.close();
+    },
+
+    async openLibrary() {
+      try {
+        this.library = await listDocuments();
+        this.$refs.libraryDialog.showModal();
+      } catch (error) {
+        this.fail(`Could not read the library: ${error.message}`);
+      }
+    },
+
+    async remove(document) {
+      try {
+        await deleteDocument(document.id);
+        if (currentDoc?.id === document.id) this.newDocument();
+        this.library = await listDocuments();
+      } catch (error) {
+        this.fail(`Could not delete: ${error.message}`);
+      }
     },
 
     async start() {
@@ -151,13 +375,30 @@ Alpine.data("app", () => {
 
       this.clearError();
       player.clear();
-      session.id = newSessionId();
-      this.prepare(text, 0);
+      llmSessionId = newSessionId();
+
+      const changed = !currentDoc || currentDoc.markdown !== text;
+
+      try {
+        currentDoc = await saveDocument({
+          ...(currentDoc ?? {}),
+          markdown: text,
+          title: titleOf(text),
+          position: changed ? 0 : (currentDoc?.position ?? 0),
+        });
+      } catch (error) {
+        return this.fail(`Could not save document: ${error.message}`);
+      }
+
+      this.docTitle = currentDoc.title;
+      this.prepare(text, changed ? 0 : (currentDoc.position ?? 0));
       await this.play();
     },
 
     async play() {
-      if (this.doc.trim() !== preparedDoc.trim()) this.prepare(this.doc, 0);
+      if (this.doc.trim() !== preparedDoc.trim()) {
+        this.prepare(this.doc, 0);
+      }
       if (!chunks.length) return this.fail("Paste some markdown first.");
 
       const first = nextIndex;
@@ -197,6 +438,7 @@ Alpine.data("app", () => {
         nextIndex = 0;
         this.refreshCounters();
         this.caption = chunks[0] ?? "";
+        this.highlight(0);
         this.play();
       } else if (this.mode === "idle") {
         chunks.length ? this.play() : this.start();
@@ -216,6 +458,7 @@ Alpine.data("app", () => {
       this.askStage = "";
       this.refreshCounters();
       this.caption = chunks[0] ?? "";
+      this.highlight(0);
       this.persistPosition();
     },
 
@@ -258,13 +501,15 @@ Alpine.data("app", () => {
       try {
         const full = await askQuestion({
           settings: this.settings,
-          sessionId: session.id,
+          sessionId: llmSessionId,
           question,
           context,
           signal: askAbort.signal,
           onDelta: (delta) => {
             if (token !== answerToken) return;
-            if (this.askStage === "sending") this.askStage = "thinking";
+            if (this.askStage === "sending") {
+              this.askStage = this.settings.speakAnswers ? "thinking" : "";
+            }
             current.text += delta;
             current.pending += delta;
             this.caption = current.text;
@@ -293,6 +538,8 @@ Alpine.data("app", () => {
     },
 
     speak(sentence, current, token) {
+      if (!this.settings.speakAnswers) return;
+
       current.inflight += 1;
       tts
         .synth(sentence, this.speechOptions())
@@ -319,21 +566,46 @@ Alpine.data("app", () => {
     },
 
     /** Jump whole sentences: -1 is the previous one, +1 the next. */
-    async seek(step) {
+    seek(step) {
       if (!chunks.length) return;
-      if (!["playing", "paused", "interrupted", "done"].includes(this.mode)) return;
+      if (this.mode === "answering") return;
 
       const position =
         this.mode === "interrupted"
           ? (snapshot?.index ?? 0)
           : (player.snapshot()?.index ?? Math.max(0, nextIndex - 1));
-      const target = Math.min(Math.max(position + step, 0), chunks.length - 1);
+
+      this.playFrom(position + step);
+    },
+
+    /** Clicking a paragraph in the preview starts narration there. */
+    jumpToBlock(target) {
+      if (this.mode === "answering") return;
+
+      const block = target.closest?.("p, li, tr, h1, h2, h3, h4, h5, h6, blockquote, pre");
+      if (!block) return;
+
+      const index = previewBlocks.indexOf(block);
+      if (index < 0) return;
+
+      const chunk = blockChunk[index];
+      if (chunk === undefined) return this.fail("That part is not narrated.");
+
+      this.playFrom(chunk);
+    },
+
+    /** Start narration at a chunk, from cache when it has been heard already. */
+    async playFrom(index) {
+      if (!chunks.length) return;
+
+      const target = Math.min(Math.max(index, 0), chunks.length - 1);
 
       player.clear();
       snapshot = null;
       nextIndex = target;
       this.refreshCounters();
       this.caption = chunks[target] ?? "";
+      this.highlight(target);
 
       let audio = pendingAudio.get(target) ?? audioCache.get(target);
 
@@ -342,6 +614,7 @@ Alpine.data("app", () => {
         this.askStage = "preparing sentence";
 
         try {
+          await player.unlock();
           audio = await tts.synth(chunks[target], this.speechOptions());
         } catch (error) {
           this.mode = "interrupted";
@@ -361,6 +634,12 @@ Alpine.data("app", () => {
     /** Speak a logged answer again, then pick narration back up. */
     replay(entry) {
       if (!entry.answer?.trim() || this.mode === "answering") return;
+
+      if (!this.settings.speakAnswers) {
+        this.caption = entry.answer;
+        return;
+      }
+
       if (this.mode === "playing" || this.mode === "paused") this.interruptForQuestion();
 
       const current = { text: entry.answer, pending: entry.answer, inflight: 0, streamDone: true };
@@ -377,7 +656,6 @@ Alpine.data("app", () => {
     async resumeDocument() {
       const saved = snapshot;
       snapshot = null;
-
       this.askStage = "";
 
       if (!chunks.length) {
@@ -398,6 +676,7 @@ Alpine.data("app", () => {
       nextIndex = saved.index + 1;
       player.restart(saved);
       this.refreshCounters();
+      this.highlight(saved.index);
       this.mode = "playing";
       this.pump();
     },
@@ -452,14 +731,29 @@ Alpine.data("app", () => {
       if (nextIndex >= chunks.length && inflight.size === 0 && !player.isActive()) {
         this.mode = "done";
         this.caption = "";
+        activeBlock?.classList.remove("active-block");
+        activeBlock = null;
       }
     },
 
     followPlayback() {
       const current = player.snapshot();
       if (!current || current.index < 0) return;
+
       const text = chunks[current.index];
       if (text && text !== this.caption) this.caption = text;
+      this.highlight(current.index);
+    },
+
+    /** Highlight the paragraph being narrated and keep it on screen. */
+    highlight(index) {
+      const block = previewBlocks[chunkBlock[index]];
+      if (!block || block === activeBlock) return;
+
+      activeBlock?.classList.remove("active-block");
+      activeBlock = block;
+      block.classList.add("active-block");
+      block.scrollIntoView({ block: "center", behavior: "smooth" });
     },
 
     speechOptions() {
@@ -467,26 +761,37 @@ Alpine.data("app", () => {
     },
 
     prepare(text, startAt) {
-      chunks = splitIntoChunks(speechText(text));
+      const spoken = speechText(text);
+      blocks = splitIntoBlocks(spoken);
+      chunks = blocks.flatMap((block) => block.chunks);
       contextBlocks = paragraphs(text);
+
       nextIndex = Math.min(startAt, chunks.length);
       preparedDoc = text;
       snapshot = null;
       pendingAudio = new Map();
       audioCache = new Map();
       inflight = new Set();
+
       this.refreshCounters();
       this.caption = chunks[nextIndex] ?? "";
-      this.renderPreview(text);
-
-      session.doc = text;
-      session.nextIndex = nextIndex;
-      saveSession(session);
+      this.renderPreview();
     },
 
-    renderPreview(text) {
-      this.$refs.preview.innerHTML = marked.parse(text);
+    /** Render the markdown, then map each spoken chunk onto the block it came from. */
+    renderPreview() {
+      const preview = this.$refs.preview;
+      preview.innerHTML = marked.parse(this.doc || "");
+
+      previewBlocks = [...preview.querySelectorAll("p, h1, h2, h3, h4, h5, h6, li, tr, blockquote, pre")].filter(
+        (element) => !element.querySelector("p, li, tr"),
+      );
+      chunkBlock = mapChunksToBlocks(chunks, previewBlocks);
+      blockChunk = invert(chunkBlock, previewBlocks.length);
+
+      activeBlock = null;
       this.editing = false;
+      this.highlight(nextIndex);
     },
 
     refreshCounters() {
@@ -496,17 +801,22 @@ Alpine.data("app", () => {
 
     persistPosition() {
       clearTimeout(saveTimer);
-      saveTimer = setTimeout(() => {
-        session.doc = preparedDoc;
-        session.nextIndex = nextIndex;
-        saveSession(session);
+      saveTimer = setTimeout(async () => {
+        if (!currentDoc) return;
+        try {
+          currentDoc = await saveDocument({ ...currentDoc, position: nextIndex });
+        } catch {
+          // the next chunk will try again
+        }
       }, 500);
     },
 
     record(question, text, at) {
       this.log = [{ at: Date.now(), chunk: at, question, answer: text }, ...this.log];
-      session.log = this.log;
-      saveSession(session);
+
+      if (!currentDoc) return;
+      currentDoc = { ...currentDoc, log: this.log, position: nextIndex };
+      saveDocument(currentDoc).catch((error) => this.fail(`Could not save: ${error.message}`));
     },
 
     async copyLog() {
@@ -525,6 +835,10 @@ Alpine.data("app", () => {
 
     formatTime(at) {
       return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    },
+
+    formatDate(at) {
+      return new Date(at).toLocaleDateString([], { month: "short", day: "numeric" });
     },
 
     openSettings() {
@@ -583,12 +897,19 @@ Alpine.data("app", () => {
         return;
       }
 
+      // Silence and room noise make Whisper hallucinate; never spend a model call on that.
+      if (!usableClip(samples)) {
+        this.micState = "idle";
+        this.fail("Didn't catch that. Try again.");
+        return;
+      }
+
       try {
         const text = await stt.transcribe(samples);
         this.modelProgress = "";
         this.micState = "idle";
 
-        if (!text) {
+        if (!usableTranscript(text)) {
           this.fail("Didn't catch that. Try again.");
           return;
         }

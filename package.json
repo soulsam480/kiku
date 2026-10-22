@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "vite build && wrangler deploy --temporary"
+    "deploy": "vite build && wrangler deploy"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",
