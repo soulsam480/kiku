@@ -50,9 +50,14 @@ into view; the exact sentence is shown in the caption bar.
 ## Tests
 
 ```sh
-npm test                                   # unit tests: normalisation, chunking, tables, emoji
+npm test                                        # unit tests + type check
+npm run typecheck                               # tsc with checkJs over src, worker, tests
 playwright-cli run-code "$(cat tests/e2e.js)"   # end-to-end against the deployment
 ```
+
+The project is plain JavaScript, but `jsconfig.json` turns on `checkJs` with JSDoc
+types, so a missing constant or a wrong argument is a build error rather than a
+runtime toast.
 
 The end-to-end script drives a real browser: it creates a document, narrates it,
 checks the highlight and caption, seeks, jumps by clicking a heading, interrupts and

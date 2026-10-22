@@ -11,8 +11,11 @@ export class Tts {
   #requests = new Map();
   #nextId = 1;
 
+  /** @type {(progress: { loaded: number, total: number }) => void} */
   onProgress = () => {};
+  /** @type {() => void} */
   onReady = () => {};
+  /** @type {(message: string) => void} */
   onError = () => {};
 
   get busy() {
@@ -24,11 +27,17 @@ export class Tts {
   }
 
   /** Download and initialize the model. */
+  /** @returns {Promise<void>} resolves once the model is loaded */
   warm() {
     return this.#send({ type: "warm" }, 300000);
   }
 
   /** Synthesize one chunk of text. Resolves to { samples, sampleRate }. */
+  /**
+   * @param {string} text
+   * @param {{ voice?: string, speed?: number }} [options]
+   * @returns {Promise<AudioChunk>}
+   */
   synth(text, options = {}) {
     return this.#send({ type: "synth", text, ...options }, 60000);
   }

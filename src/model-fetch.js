@@ -7,7 +7,7 @@ export function routeModelWeights() {
   const nativeFetch = self.fetch.bind(self);
 
   self.fetch = async (input, init) => {
-    const url = typeof input === "string" ? input : input.url;
+    const url = input instanceof Request ? input.url : String(input);
     if (!url.startsWith("https://huggingface.co/")) return nativeFetch(input, init);
 
     const path = url.slice("https://huggingface.co/".length);

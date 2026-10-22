@@ -19,6 +19,11 @@ const HTML_ENTITIES = {
  * Code blocks, images, link targets and markup punctuation are dropped so the
  * narrator never says "asterisk asterisk" or "open bracket".
  */
+/**
+ * Turn markdown into text that reads well out loud.
+ * @param {string} markdown
+ * @returns {string} plain prose, sentences separated by blank lines
+ */
 export function speechText(markdown) {
   let text = markdown.replace(/\r\n/g, "\n");
 
@@ -66,6 +71,10 @@ export function speechText(markdown) {
 }
 
 /** Split text into chunks short enough for one Kokoro pass, cutting on sentence ends. */
+/**
+ * @param {string} text speech text produced by {@link speechText}
+ * @returns {string[]} chunks short enough for one Kokoro pass
+ */
 export function splitIntoChunks(text) {
   return splitIntoBlocks(text).flatMap((block) => block.chunks);
 }
@@ -73,6 +82,11 @@ export function splitIntoChunks(text) {
 /**
  * Same chunking, but keeps each spoken paragraph together with its chunks so the
  * reader can highlight the sentence being narrated.
+ */
+/**
+ * Same chunking, but keeps each spoken paragraph with its chunks.
+ * @param {string} text
+ * @returns {Array<{ text: string, chunks: string[] }>}
  */
 export function splitIntoBlocks(text) {
   const blocks = [];
@@ -102,6 +116,12 @@ export function splitIntoBlocks(text) {
  * Pull complete sentences out of a growing buffer (used for streaming answers).
  * Returns the finished sentences and whatever is still incomplete.
  */
+/**
+ * Pull complete sentences out of a growing buffer (used for streaming answers).
+ * @param {string} buffer
+ * @param {boolean} [flush] treat the remainder as a sentence too
+ * @returns {{ sentences: string[], rest: string }}
+ */
 export function takeSentences(buffer, flush = false) {
   const sentences = [];
   let rest = buffer;
@@ -122,6 +142,11 @@ export function takeSentences(buffer, flush = false) {
 }
 
 /** Raw markdown blocks, kept for the model's context so tables stay structured. */
+/**
+ * Raw markdown blocks, kept for the model context so tables stay structured.
+ * @param {string} markdown
+ * @returns {string[]}
+ */
 export function paragraphs(markdown) {
   return markdown
     .replace(/\r\n/g, "\n")

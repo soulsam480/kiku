@@ -12,10 +12,12 @@ export const DEFAULT_SETTINGS = {
   speakAnswers: true,
 };
 
+/** @returns {TtsSettings} */
 export function loadSettings() {
   return { ...DEFAULT_SETTINGS, ...read(SETTINGS_KEY, {}) };
 }
 
+/** @param {TtsSettings} settings */
 export function saveSettings(settings) {
   write(SETTINGS_KEY, settings);
 }
@@ -29,6 +31,8 @@ export function saveSession(session) {
 }
 
 /** One id per listening session, reused on every model call so the provider can cache the document prefix. */
+/** One id per listening session, reused on every model call so the provider can cache the document prefix. */
+/** @returns {string} */
 export function newSessionId() {
   return crypto.randomUUID();
 }

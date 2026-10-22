@@ -1,4 +1,7 @@
 /** Play a short synthesized sample without touching the narration player. */
+/**
+ * @param {AudioChunk} chunk
+ */
 export function playSample({ samples, sampleRate }) {
   const context = new AudioContext();
   const buffer = context.createBuffer(1, samples.length, sampleRate);

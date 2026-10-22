@@ -21,6 +21,11 @@ export class Player {
     if (this.#context.state !== "running") await this.#context.resume();
   }
 
+  /**
+   * @param {Float32Array<ArrayBuffer>} samples
+   * @param {number} sampleRate
+   * @param {number} index chunk index, or -1 for spoken answers
+   */
   enqueue(samples, sampleRate, index) {
     const buffer = this.#context.createBuffer(1, samples.length, sampleRate);
     buffer.copyToChannel(samples, 0);
@@ -28,11 +33,15 @@ export class Player {
   }
 
   /** Resume playback of an interrupted segment from the offset in `snapshot()`. */
+  /**
+   * @param {PlaybackSnapshot} snapshot
+   */
   restart({ buffer, index, offset }) {
     if (this.#context) this.#schedule(buffer, index, offset);
   }
 
   /** What is playing right now: the chunk index plus how far into it we are. */
+  /** @returns {PlaybackSnapshot | null} where narration is right now */
   snapshot() {
     if (!this.#context) return null;
 
@@ -76,6 +85,11 @@ export class Player {
     if (this.#context) this.#nextStart = this.#context.currentTime;
   }
 
+  /**
+   * @param {AudioBuffer} buffer
+   * @param {number} index
+   * @param {number} offset seconds into the buffer to start at
+   */
   #schedule(buffer, index, offset) {
     const source = this.#context.createBufferSource();
     source.buffer = buffer;

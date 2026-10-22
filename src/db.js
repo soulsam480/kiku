@@ -47,15 +47,24 @@ async function withStore(mode, run) {
 }
 
 /** Newest first. */
+/** @returns {Promise<DocumentRecord[]>} newest first */
 export async function listDocuments() {
   const documents = await withStore("readonly", (store) => request(store, "getAll"));
   return documents.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
+/**
+ * @param {string} id
+ * @returns {Promise<DocumentRecord | undefined>}
+ */
 export function getDocument(id) {
   return withStore("readonly", (store) => request(store, "get", id));
 }
 
+/**
+ * @param {Partial<DocumentRecord>} document
+ * @returns {Promise<DocumentRecord>}
+ */
 export async function saveDocument(document) {
   const record = plain({
     log: [],
@@ -78,6 +87,10 @@ function plain(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+/**
+ * @param {string} id
+ * @returns {Promise<void>}
+ */
 export function deleteDocument(id) {
   return withStore("readwrite", (store) => request(store, "delete", id));
 }
@@ -86,6 +99,7 @@ export function deleteDocument(id) {
  * Move a document saved by the previous localStorage version into IndexedDB once.
  * Returns the migrated document, or null when there is nothing to move.
  */
+/** @returns {Promise<DocumentRecord | null>} */
 export async function takeLegacySession() {
   let raw = null;
   try {
@@ -112,6 +126,10 @@ export async function takeLegacySession() {
   }
 }
 
+/**
+ * @param {string} markdown
+ * @returns {string} first heading or line, trimmed for display
+ */
 export function titleOf(markdown) {
   const line = markdown
     .split("\n")

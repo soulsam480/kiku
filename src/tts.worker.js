@@ -42,7 +42,10 @@ self.onmessage = async ({ data }) => {
 
     const audio = await model.generate(text, { voice, speed });
     const samples = audio.audio;
-    self.postMessage({ type: "audio", id, samples, sampleRate: audio.sampling_rate }, [samples.buffer]);
+    /** @type {any} */ (self).postMessage(
+      { type: "audio", id, samples, sampleRate: audio.sampling_rate },
+      [samples.buffer],
+    );
   } catch (error) {
     self.postMessage({ type: "error", id: id ?? null, message: error?.message ?? String(error) });
   }

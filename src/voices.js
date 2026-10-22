@@ -3,6 +3,11 @@
  * for the 1.1 model; those are deliberately not listed here because this build loads
  * the English-only weights.
  */
+/**
+ * @typedef {{ id: string, name: string, group: string, label: string }} Voice
+ */
+
+/** @type {Array<{ label: string, voices: Array<[string, string]> }>} */
 export const VOICE_GROUPS = [
   {
     label: "US female",
@@ -54,6 +59,7 @@ export const VOICE_GROUPS = [
   },
 ];
 
+/** @type {Voice[]} */
 export const VOICES = VOICE_GROUPS.flatMap((group) =>
   group.voices.map(([id, name]) => ({ id, name, group: group.label, label: `${name} · ${group.label}` })),
 );
@@ -61,6 +67,10 @@ export const VOICES = VOICE_GROUPS.flatMap((group) =>
 export const DEFAULT_VOICE = "af_heart";
 
 /** Human label for a stored voice id, falling back to the raw id. */
+/**
+ * @param {string} id
+ * @returns {string} human label, or the id when unknown
+ */
 export function voiceLabel(id) {
   return VOICES.find((voice) => voice.id === id)?.label ?? id;
 }
