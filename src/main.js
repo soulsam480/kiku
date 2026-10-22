@@ -20,6 +20,7 @@ import "./style.css";
 const AHEAD = 3; // chunks synthesized ahead of playback
 const CONTEXT_CHARS = 12000; // document text sent to the model when it fits
 const AUDIO_CACHE_LIMIT = 40; // recently played chunks kept for instant seeking
+const IDLE_UNLOAD_MS = 10 * 60 * 1000; // give the models' memory back after this much quiet
 
 const escapeHtml = (text) =>
   text.replace(/[&<>"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[character]);
@@ -176,6 +177,7 @@ Alpine.data("app", () => {
   let micTimer = null;
   let unbindKeys = null;
   let sectionIndex = []; // headings, with the chunk narration should start at
+  let lastActivity = Date.now();
 
   // Recently played chunks stay in memory so prev/next is instant.
   const remember = (index, audio) => {
@@ -207,6 +209,7 @@ Alpine.data("app", () => {
     settings: loadSettings(),
     draft: loadSettings(),
     editing: true,
+    unloaded: false,
     deployedAt: import.meta.env.DEV ? "" : __BUILD_TIME__,
 
     get deployedLabel() {
@@ -718,12 +721,40 @@ Alpine.data("app", () => {
     },
 
     tick() {
+      this.maybeUnload();
+
       if (this.mode === "playing" || this.mode === "paused") {
         this.pump();
         this.followPlayback();
       } else if (this.mode === "answering") {
         this.afterAudio();
       }
+    },
+
+    /** Terminate the speech workers once nothing has needed them for a while. */
+    maybeUnload() {
+      if (this.mode === "playing" || this.mode === "loading" || this.mode === "answering") return;
+      if (tts.busy || stt.busy) return;
+      if (Date.now() - lastActivity < IDLE_UNLOAD_MS) return;
+
+      this.unloadModels();
+    },
+
+    unloadModels() {
+      lastActivity = Date.now();
+      if (!tts.loaded && !stt.loaded) return false;
+
+      tts.dispose();
+      stt.dispose();
+      this.modelProgress = "";
+      this.unloaded = true;
+      setTimeout(() => (this.unloaded = false), 1500);
+      return true;
+    },
+
+    /** Any action that needs the engines keeps them resident. */
+    touch() {
+      lastActivity = Date.now();
     },
 
     /** The queue ran dry (or a sentence finished synthesizing): decide what comes next. */
