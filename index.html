@@ -224,14 +224,28 @@
           </fieldset>
           <fieldset class="fieldset">
             <legend class="fieldset-legend">Voice</legend>
-            <select x-model="draft.voice" class="select w-full">
-              <option value="af_heart">Heart · US female</option>
-              <option value="af_bella">Bella · US female</option>
-              <option value="am_michael">Michael · US male</option>
-              <option value="am_fenrir">Fenrir · US male</option>
-              <option value="bf_emma">Emma · UK female</option>
-              <option value="bm_george">George · UK male</option>
-            </select>
+            <div class="max-h-56 space-y-1 overflow-auto rounded-box border border-base-300 p-1">
+              <template x-for="voice in voices" :key="voice.id">
+                <div
+                  class="flex items-center gap-2 rounded-field px-2 py-1.5"
+                  :class="draft.voice === voice.id ? 'bg-primary/15 ring-1 ring-primary/40' : 'hover:bg-base-200'"
+                >
+                  <button type="button" class="flex min-w-0 flex-1 items-baseline gap-2 text-left" @click="draft.voice = voice.id">
+                    <span class="text-sm" x-text="voice.name"></span>
+                    <span class="text-xs text-base-content/50" x-text="voice.group"></span>
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-xs btn-outline"
+                    @click="previewVoice(voice.id)"
+                    :disabled="Boolean(previewing)"
+                  >
+                    <span x-show="previewing !== voice.id">Hear</span>
+                    <span x-show="previewing === voice.id" class="loading loading-spinner loading-xs"></span>
+                  </button>
+                </div>
+              </template>
+            </div>
           </fieldset>
           <fieldset class="fieldset">
             <legend class="fieldset-legend">Speed · <span x-text="Number(draft.speed).toFixed(2)"></span></legend>

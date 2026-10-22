@@ -1,3 +1,5 @@
+import { DEFAULT_VOICE } from "./voices.js";
+
 const SETTINGS_KEY = "listener.settings.v1";
 const SESSION_KEY = "listener.session.v1";
 
@@ -5,7 +7,7 @@ export const DEFAULT_SETTINGS = {
   baseUrl: "https://api.openai.com/v1",
   apiKey: "",
   model: "gpt-4o-mini",
-  voice: "af_heart",
+  voice: DEFAULT_VOICE,
   speed: 1,
   speakAnswers: true,
 };
