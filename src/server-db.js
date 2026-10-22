@@ -45,6 +45,7 @@ export function listDocuments() {
       `SELECT d.*,
         (SELECT COUNT(*) FROM chapters c WHERE c.document_id = d.id) AS chapters,
         (SELECT COUNT(*) FROM chapters c WHERE c.document_id = d.id AND c.status = 'done') AS done,
+        (SELECT COUNT(*) FROM chapters c WHERE c.document_id = d.id AND c.status IN ('queued', 'running')) AS active,
         (SELECT COALESCE(SUM(c.duration), 0) FROM chapters c WHERE c.document_id = d.id AND c.status = 'done') AS duration
        FROM documents d ORDER BY d.created_at DESC`,
     )

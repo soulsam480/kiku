@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Listener</title>
     <link rel="icon" href="/icon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#0f1115" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -15,6 +16,7 @@
       <div class="mx-auto flex w-full max-w-6xl items-center gap-2 px-3 py-2">
         <h1 class="hidden text-lg font-semibold tracking-tight sm:block">Listener</h1>
         <span
+          x-show="view === 'reader'"
           class="badge badge-outline badge-sm whitespace-nowrap"
           :class="mode === 'playing' ? 'badge-success' : 'badge-outline'"
           x-text="statusLabel"
@@ -32,7 +34,7 @@
       </div>
     </header>
 
-    <div role="tablist" class="tabs tabs-border mx-3 mt-2 shrink-0 lg:hidden">
+    <div role="tablist" x-show="view === 'reader'" class="tabs tabs-border mx-3 mt-2 shrink-0 lg:hidden">
       <button role="tab" class="tab flex-1" :class="tab === 'doc' ? 'tab-active' : ''" @click="tab = 'doc'">Document</button>
       <button role="tab" class="tab flex-1" :class="tab === 'log' ? 'tab-active' : ''" @click="tab = 'log'">
         <span>Questions</span>
@@ -44,18 +46,21 @@
     <section
       x-data="library"
       x-show="view === 'library'"
-      class="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-2 p-3"
+      class="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col gap-3 p-3"
     >
-      <div class="flex shrink-0 flex-wrap items-center gap-2">
-        <label class="btn btn-sm btn-primary">
-          Upload book
-          <input type="file" accept=".md,.markdown,.txt,.epub" class="hidden" @change="upload($event)" />
-        </label>
-        <button class="btn btn-sm btn-outline" @click="showPaste = !showPaste">Paste text</button>
-        <span class="text-xs text-base-content/50" x-show="busy">working…</span>
-        <label class="ml-auto flex items-center gap-2 text-xs text-base-content/60">
+      <div class="flex shrink-0 flex-col gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <label class="btn btn-sm btn-primary">
+            Upload book
+            <input type="file" accept=".md,.markdown,.txt,.epub" class="hidden" @change="upload($event)" />
+          </label>
+          <button class="btn btn-sm btn-outline" @click="showPaste = !showPaste">Paste text</button>
+          <span class="text-xs text-base-content/50" x-show="busy">working…</span>
+        </div>
+
+        <label class="flex items-center gap-2 text-xs text-base-content/60">
           Voice
-          <select x-model="voice" class="select select-sm max-w-40">
+          <select x-model="voice" class="select select-sm flex-1">
             <template x-for="option in voices" :key="option.id">
               <option :value="option.id" x-text="option.label"></option>
             </template>
@@ -77,67 +82,77 @@
         <template x-if="!current">
           <div>
             <template x-for="document in documents" :key="document.id">
-              <div class="group flex items-center gap-3 rounded-box px-3 py-2 hover:bg-base-200">
-                <span class="grid size-10 shrink-0 place-items-center rounded bg-base-300 text-lg">▤</span>
+              <div class="flex items-center gap-3 rounded-box px-2 py-2 hover:bg-base-200">
+                <span class="grid size-10 shrink-0 place-items-center rounded bg-base-300 text-base">▤</span>
                 <button class="min-w-0 flex-1 text-left" @click="open(document)">
                   <span class="block truncate text-sm font-medium" x-text="document.title"></span>
-                  <span class="text-xs text-base-content/50">
-                    <span x-text="document.done + ' of ' + document.chapters + ' chapters'"></span>
+                  <span class="block text-xs text-base-content/50">
+                    <span x-text="document.done + '/' + document.chapters + ' chapters'"></span>
                     <span x-show="document.duration"> · <span x-text="duration(document.duration)"></span></span>
                   </span>
                 </button>
                 <button class="btn btn-xs btn-outline" @click="open(document)">Open</button>
-                <button class="btn btn-xs btn-outline btn-error" @click="remove(document)">Delete</button>
+                <button class="btn btn-xs btn-outline btn-error btn-square" @click="remove(document)" aria-label="Delete">✕</button>
               </div>
             </template>
             <p class="mt-10 text-center text-sm text-base-content/50" x-show="documents.length === 0">
-              Nothing here yet. Upload an EPUB, markdown or text file.
+              Upload an EPUB, markdown or text file to generate an audiobook.
             </p>
           </div>
         </template>
 
         <template x-if="current">
           <div class="flex flex-col gap-3">
-            <div class="flex items-center gap-3">
-              <button class="btn btn-xs btn-outline" @click="close()">Back</button>
-              <div class="grid size-16 shrink-0 place-items-center rounded-box bg-gradient-to-br from-primary/30 to-secondary/30 text-2xl">♫</div>
-              <div class="min-w-0 flex-1">
-                <h2 class="truncate text-lg font-semibold" x-text="current.title"></h2>
-                <p class="text-xs text-base-content/50">
-                  <span x-text="current.chapters.length + ' chapters'"></span>
-                  <span x-show="current.duration"> · <span x-text="duration(current.duration)"></span></span>
-                </p>
-              </div>
-              <button class="btn btn-sm btn-primary" @click="generateAll()">Generate all</button>
+            <div class="flex items-center gap-2">
+              <button class="btn btn-xs btn-outline" @click="close()">← Back</button>
+              <h2 class="min-w-0 flex-1 truncate text-base font-semibold" x-text="current.title"></h2>
             </div>
 
-            <ul class="divide-y divide-base-300/50">
+            <div class="flex items-center gap-3 rounded-box bg-base-200 p-2">
+              <div class="grid size-12 shrink-0 place-items-center rounded bg-base-300 text-lg">♫</div>
+              <div class="min-w-0 flex-1 text-xs text-base-content/60">
+                <span x-text="current.chapters.length + ' chapters'"></span>
+                <span x-show="current.duration"> · <span x-text="duration(current.duration)"></span></span>
+              </div>
+              <button class="btn btn-sm btn-primary shrink-0" @click="generateAll()">Generate all</button>
+            </div>
+
+            <ul class="divide-y divide-base-300/40">
               <template x-for="(chapter, index) in current.chapters" :key="chapter.id">
                 <li
-                  class="flex items-center gap-3 px-2 py-2"
-                  :class="now?.id === chapter.id ? 'bg-base-200' : 'hover:bg-base-200/60'"
+                  class="flex items-center gap-2 py-2"
+                  :class="now?.id === chapter.id ? 'bg-base-200/80' : ''"
                 >
-                  <span class="w-5 shrink-0 text-right text-xs tabular-nums text-base-content/40" x-text="index + 1"></span>
+                  <span class="w-4 shrink-0 text-right text-[0.7rem] tabular-nums text-base-content/40" x-text="index + 1"></span>
+
                   <button class="min-w-0 flex-1 text-left" @click="toggle(chapter)">
                     <span
                       class="block truncate text-sm"
                       :class="now?.id === chapter.id ? 'font-medium text-primary' : ''"
                       x-text="chapter.title"
                     ></span>
-                    <span class="text-xs" :class="chapter.status === 'error' ? 'text-error' : 'text-base-content/50'" x-text="status(chapter)"></span>
                   </button>
-                  <span class="text-xs tabular-nums text-base-content/50" x-show="chapter.status === 'done'" x-text="duration(chapter.duration)"></span>
+
+                  <span
+                    class="shrink-0 text-[0.7rem] tabular-nums"
+                    :class="chapter.status === 'error' ? 'text-error' : 'text-base-content/45'"
+                    x-text="status(chapter)"
+                  ></span>
+
                   <button
-                    class="btn btn-xs btn-square btn-outline"
+                    class="btn btn-xs btn-square btn-outline shrink-0"
                     x-show="chapter.status === 'done'"
                     @click="toggle(chapter)"
                     :aria-label="now?.id === chapter.id && playing ? 'Pause' : 'Play'"
                   >
-                    <span x-text="now?.id === chapter.id && playing ? '❚❚' : '▶'"></span>
+                    <span class="text-[0.6rem]" x-text="now?.id === chapter.id && playing ? '❚❚' : '▶'"></span>
                   </button>
-                  <button class="btn btn-xs btn-outline" x-show="['pending', 'error'].includes(chapter.status)" @click="generate(chapter)">
-                    Generate
-                  </button>
+
+                  <button
+                    class="btn btn-xs btn-outline shrink-0"
+                    x-show="['pending', 'error'].includes(chapter.status)"
+                    @click="generate(chapter)"
+                  >Get</button>
                 </li>
               </template>
             </ul>
@@ -146,23 +161,24 @@
       </div>
 
       <div class="shrink-0 border-t border-base-300 pt-2" x-show="now">
-        <div class="flex flex-wrap items-center gap-3">
-          <div class="grid size-12 shrink-0 place-items-center rounded bg-base-300 text-lg">♪</div>
-          <div class="min-w-0 flex-1">
-            <p class="truncate text-sm font-medium" x-text="now?.title"></p>
-            <p class="truncate text-xs text-base-content/50" x-text="current?.title"></p>
+        <div class="flex flex-col gap-2">
+          <div class="flex items-center gap-2">
+            <div class="grid size-10 shrink-0 place-items-center rounded bg-base-300 text-base">♪</div>
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-medium" x-text="now?.title"></p>
+              <p class="truncate text-xs text-base-content/50" x-text="current?.title"></p>
+            </div>
+            <div class="flex shrink-0 items-center gap-1">
+              <button class="btn btn-sm btn-square btn-ghost" @click="previous()" aria-label="Previous">⏮</button>
+              <button class="btn btn-sm btn-square btn-primary" @click="playing ? audio.pause() : audio.play()" aria-label="Play or pause">
+                <span class="text-xs" x-text="playing ? '❚❚' : '▶'"></span>
+              </button>
+              <button class="btn btn-sm btn-square btn-ghost" @click="next()" aria-label="Next">⏭</button>
+            </div>
           </div>
 
-          <div class="flex items-center gap-1">
-            <button class="btn btn-sm btn-square btn-ghost" @click="previous()" aria-label="Previous">⏮</button>
-            <button class="btn btn-sm btn-square btn-primary" @click="playing ? audio.pause() : audio.play()" aria-label="Play or pause">
-              <span x-text="playing ? '❚❚' : '▶'"></span>
-            </button>
-            <button class="btn btn-sm btn-square btn-ghost" @click="next()" aria-label="Next">⏭</button>
-          </div>
-
-          <div class="flex min-w-56 flex-1 items-center gap-2">
-            <span class="text-xs tabular-nums text-base-content/60" x-text="clock(position)"></span>
+          <div class="flex items-center gap-2">
+            <span class="w-10 text-right text-[0.7rem] tabular-nums text-base-content/60" x-text="clock(position)"></span>
             <input
               type="range"
               class="range range-xs flex-1"
@@ -173,19 +189,15 @@
               @input="seek($event)"
               aria-label="Seek"
             />
-            <span class="text-xs tabular-nums text-base-content/60" x-text="clock(total)"></span>
-          </div>
-
-          <label class="flex items-center gap-1 text-xs text-base-content/60">
-            Speed
-            <select x-model.number="speed" @change="setSpeed()" class="select select-xs w-16">
-              <option value="0.8">0.8</option>
-              <option value="1">1.0</option>
-              <option value="1.2">1.2</option>
-              <option value="1.5">1.5</option>
-              <option value="1.8">1.8</option>
+            <span class="w-10 text-[0.7rem] tabular-nums text-base-content/60" x-text="clock(total)"></span>
+            <select x-model.number="speed" @change="setSpeed()" class="select select-xs w-16 shrink-0">
+              <option value="0.8">0.8×</option>
+              <option value="1">1×</option>
+              <option value="1.2">1.2×</option>
+              <option value="1.5">1.5×</option>
+              <option value="1.8">1.8×</option>
             </select>
-          </label>
+          </div>
         </div>
       </div>
     </section>

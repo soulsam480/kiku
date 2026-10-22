@@ -21,6 +21,16 @@ import {
 } from "./db.js";
 import "./style.css";
 
+// Builds from before the PWA removal left a service worker on this origin that
+// serves stale assets. Unregister it once, then reload clean.
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    if (!registrations.length) return;
+    Promise.all(registrations.map((registration) => registration.unregister())).then(() => location.reload());
+  });
+}
+
+
 const AHEAD = 3; // chunks synthesized ahead of playback
 const CONTEXT_CHARS = 12000; // document text sent to the model when it fits
 const AUDIO_CACHE_LIMIT = 40; // recently played chunks kept for instant seeking

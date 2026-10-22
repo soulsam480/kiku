@@ -43,13 +43,28 @@ Alpine.data("library", () => ({
     this.audio.volume = this.volume;
 
     this.refresh();
-    this.timer = setInterval(() => this.refresh(), POLL_MS);
     this.$watch("voice", (value) => localStorage.setItem("listener.voice", value));
   },
 
   destroy() {
-    clearInterval(this.timer);
+    this.stopPolling();
     this.audio?.pause();
+  },
+
+  /** Poll only while the server is synthesising; idle costs nothing. */
+  startPolling() {
+    if (!this.timer) this.timer = setInterval(() => this.refresh(), POLL_MS);
+  },
+
+  stopPolling() {
+    clearInterval(this.timer);
+    this.timer = null;
+  },
+
+  generating() {
+    const chapters = this.current?.chapters ?? [];
+    const open = chapters.some((chapter) => chapter.status === "queued" || chapter.status === "running");
+    return open || this.documents.some((document) => document.active > 0);
   },
 
   async refresh() {
@@ -63,6 +78,9 @@ Alpine.data("library", () => ({
         const detail = await fetch(`/api/documents/${this.current.id}`);
         if (detail.ok) this.current = await detail.json();
       }
+
+      if (this.generating()) this.startPolling();
+      else this.stopPolling();
     } catch {
       // service is restarting; the next tick retries
     }
@@ -108,6 +126,7 @@ Alpine.data("library", () => ({
   async open(document) {
     const response = await fetch(`/api/documents/${document.id}`);
     if (response.ok) this.current = await response.json();
+    if (this.generating()) this.startPolling();
   },
 
   close() {
@@ -232,8 +251,9 @@ Alpine.data("library", () => ({
   },
 
   duration(seconds) {
-    if (!seconds) return "";
-    const total = Math.round(seconds);
+    const total = Math.round(seconds || 0);
+    if (!total) return "";
+    if (total < 60) return `${total}s`;
     if (total < 3600) return `${Math.round(total / 60)} min`;
     return `${Math.floor(total / 3600)}h ${Math.round((total % 3600) / 60)}m`;
   },
@@ -244,11 +264,11 @@ Alpine.data("library", () => ({
   },
 
   status(chapter) {
-    if (chapter.status === "done") return "ready";
+    if (chapter.status === "done") return this.duration(chapter.duration);
     if (chapter.status === "running") return "generating…";
     if (chapter.status === "queued") return "queued";
-    if (chapter.status === "error") return chapter.error || "failed";
-    return "not generated";
+    if (chapter.status === "error") return "failed";
+    return "";
   },
 
   totalDuration(document) {
