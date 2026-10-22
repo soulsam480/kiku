@@ -1,138 +1,115 @@
 # Listener
 
-Paste markdown, listen to it read aloud by [Kokoro](https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX) running
-in your browser. Interrupt with a question, hear the answer, and narration picks up
-where it stopped. Every interruption is logged.
+Self-hosted audiobooks from your own documents. Upload markdown, text or EPUB,
+the server splits it into chapters, narrates them with
+[Kokoro](https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX) and plays them
+in a small player. The reader can also narrate live and answer questions about the
+text without losing its place.
+
+One Bun process runs everything: the app, the speech API, chapter generation,
+transcription and the audio files.
 
 ## Run
 
 ```sh
-mise install          # Node 24, per .mise.toml
-npm install
-npm run dev           # http://localhost:5173
+git clone <this repo> listener
+cd listener
+bun install
+bun start            # build the frontend, then serve http://127.0.0.1:8787
 ```
 
-Production build and deploy:
+`bun start` builds the frontend into `dist/` and starts the server. The first
+narration downloads the Kokoro model (about 90 MB) once, then runs offline on CPU.
 
-```sh
-npm run deploy        # vite build + wrangler deploy
-```
-
-This deploys the Worker named `listener` (see `wrangler.jsonc`) to your Cloudflare
-account. For a throwaway deploy without logging in, use
-`npx wrangler deploy --temporary`.
-
-## Configure
-
-Open **Settings** once. Values live in this browser's storage; there is no `.env`.
-
-| Field | Notes |
+| Command | What it does |
 | --- | --- |
-| API base URL | Any OpenAI-compatible endpoint. For OpenCode Go use `https://opencode.ai/inference/go/openai/v1` |
-| API key | Sent straight from the browser to your endpoint |
-| Model | e.g. `gpt-4o-mini`, or `minimax-m3.1-flash-free` for OpenCode Go |
-| Voice | Six Kokoro voices, US and UK |
-| Speed | 0.6× – 1.4× |
-| Speak answers aloud | Off keeps answers text-only in the log, so narration is never interrupted by audio |
+| `bun start` | Build the frontend and serve the whole app on `:8787` |
+| `bun run serve` | Serve an existing `dist/` without rebuilding |
+| `bun run dev` | Vite on `:5173` with HMR, proxying the API to `:8787` |
+| `bun test` | Unit tests and type check |
+| `bun run typecheck` | `tsc` with `checkJs` over `src/`, `tests/` |
 
-## Storage
+Requires `ffmpeg` on `PATH` (MP3 encoding and speech-to-text decoding) and Bun
+1.4+. On a fresh clone `bun start` is the only command you need.
 
-Documents live in IndexedDB (`listener` → `documents`), not localStorage. Each record
-keeps its markdown, title, reading position and interruption log, so switching
-documents resumes exactly where you stopped and keeps the questions with the text they
-were asked about. The **Documents** dialog lists them by last activity, with open and
-delete; a document saved by the older localStorage version is migrated automatically
-on first load. Settings still live in localStorage.
+## Data
 
-During narration the paragraph being spoken is highlighted in the preview and scrolled
-into view; the exact sentence is shown in the caption bar.
+Everything mutable lives under `data/`, relative to where you run the command:
 
-## Tests
-
-```sh
-npm test                                        # unit tests + type check
-npm run typecheck                               # tsc with checkJs over src, worker, tests
-playwright-cli run-code "$(cat tests/e2e.js)"   # end-to-end against the deployment
+```
+data/listener.db          SQLite: documents, chapters, status, durations
+data/audio/<id>.mp3       64 kbps mono chapter audio, served with range requests
 ```
 
-The project is plain JavaScript, but `jsconfig.json` turns on `checkJs` with JSDoc
-types, so a missing constant or a wrong argument is a build error rather than a
-runtime toast.
+`data/` is gitignored; `data/corpus.md` is a test fixture. Point `DATA_DIR`
+somewhere else to keep books outside the repo.
 
-The end-to-end script drives a real browser: it creates a document, narrates it,
-checks the highlight and caption, seeks, jumps by clicking a heading, interrupts and
-resumes, reloads to confirm persistence, then deletes the test document. It never
-calls the model, so no key is needed, and it clears the service worker first so a
-cached build can't produce a false pass.
+## Configuration
+
+All optional, read from the environment:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PORT` | `8787` | HTTP port |
+| `HOST` | `0.0.0.0` | Bind address |
+| `DATA_DIR` | `data` | SQLite and audio location |
+| `DIST_DIR` | `dist` | Built frontend location |
+| `VOICE` | `af_heart` | Default Kokoro voice |
+| `API_KEY` | empty | If set, the speech API requires `Authorization: Bearer <key>` |
+| `STT_MODEL` | `Xenova/whisper-tiny.en` | Transcription model |
+
+The reader's LLM settings (base URL, model, key) are entered in **Settings** and
+stay in this browser's storage; the server only forwards the request.
 
 ## Use
 
-1. Paste markdown, press **Start listening**.
-2. `space` pauses and resumes, `←` `→` jump one sentence, `i` interrupts and focuses the ask box, `m` talks, `esc` cancels.
-3. **Click any paragraph, heading, list item or table row in the preview** to start narration there — clicking a heading is the fastest way to jump to a section.
-4. Clicking the ask box or the mic interrupts. Type or speak, then send. The badge shows `sending`, `thinking`, `speaking`.
-5. The answer is spoken, then narration resumes from the exact sentence. `↺` on a log entry speaks that answer again.
-6. Interruptions are listed on the right; **Copy** copies the whole log.
+1. **Library** → **Upload book** (`.md`, `.txt`, `.epub`) or paste text.
+2. Open the book, press **Generate all**. Chapters synthesize one at a time in the
+   background; the list fills in as each finishes.
+3. Press play on any ready chapter. The player has transport, scrubber, speed and
+   lock-screen controls, and continues to the next chapter.
+4. **Reader** narrates the document live. Click a paragraph to jump there, `space`
+   pauses, `i` interrupts, `m` talks. Ask a question and narration resumes where it
+   stopped.
 
-Markdown is converted to speech text: code blocks, images, link targets, bare URLs
-and markup punctuation are rewritten so the narrator never says "asterisk" or "open
-bracket", and slashes read as words (`and/or` → "and or", `1/2` → "1 over 2"). Emoji
-are spoken rather than dropped: common ones use short words (`✅` → "check", `⚠️` →
-"warning"), and the rest fall back to Unicode CLDR names (`🇺🇸` → "United States",
-`🫠` → "melting face"). That table is `src/emoji-names.json`, generated from
-[unicode-emoji-json](https://github.com/muan/unicode-emoji-json) (MIT); it adds about
-20 KB gzipped to the bundle.
+Markdown is normalized for speech before synthesis: tables are read with their
+column names, emoji become Unicode CLDR names, money and units are spelled out, and
+no table row or cell is skipped.
 
-Tables are narrated by shape: two-column tables read as term/definition pairs, normal
-tables read row by row with their column names, and comparison matrices (entities
-across the top) read one column at a time — e.g. "Blinq. Model: freemium seat.
-Entry price: $4.99." No cell is skipped.
+## API
 
-Text is split into chunks on sentence boundaries, so interruption resumes
-mid-document and long documents never hit model limits.
+OpenAI-compatible speech, usable from other clients:
 
-## Why the app has a server hop
+```sh
+curl -s http://127.0.0.1:8787/v1/audio/speech \
+  -H 'content-type: application/json' \
+  -d '{"model":"kokoro","input":"Hello from Kokoro.","voice":"af_heart","response_format":"mp3"}' \
+  --output hello.mp3
+```
 
-Two things cannot be done from a web page:
-
-- **Model weights.** Hugging Face answers with `access-control-allow-origin: https://huggingface.co`,
-  so no browser can fetch them. Model files are served from `/hf/*` by the Worker
-  (and by a Vite proxy in dev).
-- **LLM calls.** Providers such as OpenCode Go reject the CORS preflight and expect a
-  client `User-Agent`, which browsers are forbidden from setting. The Worker forwards
-  `/llm/*` and adds `User-Agent` and `x-opencode-session`.
-
-Both hops only forward: the model files are public, and your API key is passed
-through from the browser, never stored on the server. The Worker also sets
-`Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy`, which lets the wasm
-runtime use every core — without that, speech synthesis is several times slower.
-
-A purely static host without these routes will not work; deploy the Worker.
-
-## What leaves your machine
-
-Only the interrupt question and the surrounding document context go to your LLM
-endpoint, on your key. Speech synthesis and speech-to-text run locally
-(`kokoro-js` and Whisper `tiny.en`, both q8 on wasm); the models download once and
-are then cached by the browser. Text and audio are not uploaded anywhere.
-
-## Phone
-
-The app is a PWA: open the deployed URL on your phone and use "Add to Home Screen".
-Installation, the microphone and offline caching all require HTTPS, which the
-`workers.dev` URL provides. A plain `http://` LAN address will not install and will
-not get microphone access.
+| Route | Purpose |
+| --- | --- |
+| `POST /v1/audio/speech` | OpenAI-compatible synthesis (mp3, wav, opus) |
+| `GET /v1/audio/voices` | Voice catalog |
+| `GET /v1/models` | Served model |
+| `POST /api/documents` | Upload a file or JSON `{ "markdown": "…" }` |
+| `GET /api/documents` | Documents with chapter counts |
+| `GET /api/documents/:id` | Document with chapters |
+| `POST /api/documents/:id/generate` | Queue every pending chapter |
+| `POST /api/chapters/:id/generate` | Queue one chapter |
+| `GET /api/chapters/:id/audio` | Chapter MP3, supports `Range` |
+| `POST /api/transcribe` | Audio blob to text |
+| `POST /api/llm/chat/completions` | Forwards to the configured provider |
+| `GET /health` | Model state and queue depth |
 
 ## Notes
 
-- The build timestamp is shown in the footer (and in Settings): `built 22 Oct, 17:07`.
-  It comes from the bundle itself, so if it looks stale, a cached service worker is
-  serving an old build.
-- First sound after a reload takes a while: the wasm runtime compiles and the first
-  chunk is synthesized before the badge says `playing`. The badge shows `loading`
-  and model download progress until then.
-- One document session at a time. Reloading restores the text, the reading
-  position and the log.
-- Streaming to a locked phone screen is not possible: browsers suspend the page, so
-  synthesis stops. Listening works with the screen on, or with the phone unlocked
-  and the app in the foreground.
+- Synthesis is single-concurrency by design (one CPU, one model). Chapters are
+  resumable: each one records `pending`, `queued`, `running`, `done` or `error`.
+- Audio is 64 kbps mono MP3, roughly 0.5 MB per minute — a 10-hour book is about
+  300 MB.
+- The build timestamp appears in Settings; it comes from the bundle, so a stale
+  value means the browser is serving an old build.
+- Serving over Tailscale or a reverse proxy works as-is. Microphone access needs
+  HTTPS (or `localhost`), so recording questions requires a TLS terminator such as
+  Caddy.

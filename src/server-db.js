@@ -1,7 +1,10 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
+import { resolve } from "node:path";
 
-const DATA = new URL("../data/", import.meta.url).pathname;
+// Everything mutable lives under one directory, so a clone is self-contained
+// and a deployment can point DATA_DIR somewhere else.
+const DATA = `${resolve(process.env.DATA_DIR ?? "data")}/`;
 mkdirSync(`${DATA}audio`, { recursive: true });
 
 /** @type {Database} */

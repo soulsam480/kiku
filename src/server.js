@@ -12,14 +12,15 @@
  *   /api/chapters/:id/audio  chapter MP3 with range support
  *   /health                  liveness and readiness
  */
+import { resolve } from "node:path";
 import { VOICES } from "./voices.js";
 import { chat } from "./server-chat.js";
 import { transcribe } from "./server-transcribe.js";
 import { createDocument, deleteDocument, getChapter, getDocument, listDocuments, resetChapters } from "./server-db.js";
+import { audioPath } from "./server-db.js";
 import { parseUpload, parseText } from "./server-documents.js";
 import { enqueueChapter, enqueueDocument, queueState } from "./server-episodes.js";
 import { AUDIO_TYPES, encode, loadModel, modelName, queued, ready, synthesize } from "./server-speech.js";
-import { audioPath } from "./server-db.js";
 
 const port = Number(process.env.PORT ?? 8787);
 const hostname = process.env.HOST ?? "0.0.0.0";
@@ -29,7 +30,7 @@ const defaultVoice = process.env.VOICE ?? "af_heart";
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
-const dist = new URL("../dist/", import.meta.url).pathname;
+const dist = `${resolve(process.env.DIST_DIR ?? "dist")}/`;
 
 async function serveStatic(pathname) {
   const file = Bun.file(`${dist}${pathname === "/" ? "index.html" : pathname.slice(1)}`);

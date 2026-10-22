@@ -4,4 +4,7 @@ dist
 .playwright-cli-dev.log
 .env
 .DS_Store
-data/corpus.md
+
+# Runtime state: SQLite, generated audio and uploads. The corpus is a test fixture.
+data/*
+!data/corpus.md
