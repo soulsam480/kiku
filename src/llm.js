@@ -20,6 +20,13 @@ const STOP_WORDS = new Set(
  * Short documents are sent whole; long ones get the chunks around the listener
  * plus chunks that mention the question's keywords.
  */
+/**
+ * @param {string[]} chunks raw markdown blocks
+ * @param {number} currentIndex block nearest the listener
+ * @param {string} question
+ * @param {number} [maxChars]
+ * @returns {string} context to send with the question
+ */
 export function buildContext(chunks, currentIndex, question, maxChars = 12000) {
   const whole = chunks.join(" ");
   if (whole.length <= maxChars) return whole;
@@ -50,6 +57,10 @@ export function buildContext(chunks, currentIndex, question, maxChars = 12000) {
 }
 
 /** Stream a chat completion, calling `onDelta` with each new piece of text. */
+/**
+ * @param {{ settings: TtsSettings, sessionId: string, question: string, context: string, signal: AbortSignal, onDelta: (delta: string) => void }} request
+ * @returns {Promise<string>} the full answer
+ */
 export async function askQuestion({ settings, sessionId, question, context, signal, onDelta }) {
   const payload = JSON.stringify({
     model: settings.model,

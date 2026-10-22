@@ -7,6 +7,7 @@ export class Mic {
   #chunks = [];
   #startedAt = 0;
 
+  /** @returns {Promise<void>} */
   async start() {
     this.#stream ??= await navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
@@ -22,6 +23,7 @@ export class Mic {
   }
 
   /** Stops recording. Returns null when the clip was too short to be speech. */
+  /** @returns {Promise<Float32Array<ArrayBuffer> | null>} null when the clip was too short */
   async stop() {
     const recorder = this.#recorder;
     if (!recorder || recorder.state !== "recording") return null;

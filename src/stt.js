@@ -9,7 +9,9 @@ export class Stt {
   #requests = new Map();
   #nextId = 1;
 
+  /** @type {(progress: { loaded: number, total: number }) => void} */
   onProgress = () => {};
+  /** @type {(message: string) => void} */
   onError = () => {};
 
   get busy() {
@@ -21,6 +23,10 @@ export class Stt {
   }
 
   /** Transcribe 16 kHz mono samples. Resolves to the transcript text. */
+  /**
+   * @param {Float32Array<ArrayBuffer>} samples 16 kHz mono audio
+   * @returns {Promise<string>} transcript
+   */
   transcribe(samples) {
     const id = this.#nextId++;
     const worker = this.#ensureWorker();

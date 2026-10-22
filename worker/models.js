@@ -22,10 +22,9 @@ export async function huggingface(request) {
   const target = `https://huggingface.co${path}${url.search}`;
 
   try {
-    const upstream = await fetch(target, {
-      headers: { "User-Agent": "listener/1.0" },
-      cf: { cacheEverything: true, cacheTtl: 86400 },
-    });
+    /** @type {RequestInit & { cf?: unknown }} */
+    const init = { headers: { "User-Agent": "listener/1.0" }, cf: { cacheEverything: true, cacheTtl: 86400 } };
+    const upstream = await fetch(target, init);
 
     if (!upstream.ok) return notFound();
 

@@ -25,6 +25,7 @@ const AHEAD = 3; // chunks synthesized ahead of playback
 const CONTEXT_CHARS = 12000; // document text sent to the model when it fits
 const AUDIO_CACHE_LIMIT = 40; // recently played chunks kept for instant seeking
 const IDLE_UNLOAD_MS = 10 * 60 * 1000; // give the models' memory back after this much quiet
+const PREVIEW_TEXT = "Here is how this voice sounds.";
 
 Alpine.data("app", () => {
   const player = new Player();
@@ -216,6 +217,9 @@ Alpine.data("app", () => {
       }
     },
 
+    /**
+     * @param {DocumentRecord} document
+     */
     open(document) {
       this.touch();
       currentDoc = document;
@@ -271,6 +275,9 @@ Alpine.data("app", () => {
       }
     },
 
+    /**
+     * @param {DocumentRecord} document
+     */
     async remove(document) {
       try {
         await deleteDocument(document.id);
@@ -450,12 +457,22 @@ Alpine.data("app", () => {
       }
     },
 
+    /**
+     * @param {boolean} final
+     * @param {AnswerState} current
+     * @param {number} token
+     */
     flushAnswer(final, current, token) {
       const { sentences, rest } = takeSentences(current.pending, final);
       current.pending = rest;
       for (const sentence of sentences) this.speak(sentence, current, token);
     },
 
+    /**
+     * @param {string} sentence
+     * @param {AnswerState} current
+     * @param {number} token
+     */
     speak(sentence, current, token) {
       if (!this.settings.speakAnswers) return;
 
@@ -485,6 +502,9 @@ Alpine.data("app", () => {
     },
 
     /** Jump whole sentences: -1 is the previous one, +1 the next. */
+    /**
+     * @param {number} step -1 for the previous sentence, 1 for the next
+     */
     seek(step) {
       if (!chunks.length) return;
       if (this.mode === "answering") return;
@@ -498,6 +518,9 @@ Alpine.data("app", () => {
     },
 
     /** Clicking a paragraph in the preview starts narration there. */
+    /**
+     * @param {Element | null} target node inside the preview that was clicked
+     */
     jumpToBlock(target) {
       if (this.mode === "answering") return;
 
@@ -517,6 +540,10 @@ Alpine.data("app", () => {
     },
 
     /** Start narration at a chunk, from cache when it has been heard already. */
+    /**
+     * Start narration at a sentence, from cache when it has been heard already.
+     * @param {number} index
+     */
     async playFrom(index) {
       this.touch();
       if (!chunks.length) return;
@@ -580,6 +607,10 @@ Alpine.data("app", () => {
     },
 
     /** Synthesize one chunk, reusing a request that is already in flight. */
+    /**
+     * @param {number} index
+     * @returns {Promise<AudioChunk>}
+     */
     synthesize(index) {
       const existing = synthQueue.get(index);
       if (existing) return existing;
@@ -593,6 +624,9 @@ Alpine.data("app", () => {
     },
 
     /** Speak a logged answer again, then pick narration back up. */
+    /**
+     * @param {Interruption} entry
+     */
     replay(entry) {
       if (!entry.answer?.trim() || this.mode === "answering") return;
 
@@ -741,6 +775,9 @@ Alpine.data("app", () => {
     },
 
     /** Highlight the paragraph being narrated and keep it on screen. */
+    /**
+     * @param {number} index
+     */
     highlight(index) {
       const block = previewBlocks[chunkBlock[index]];
       if (!block || block === activeBlock) return;
@@ -755,6 +792,10 @@ Alpine.data("app", () => {
       return { voice: this.settings.voice, speed: this.settings.speed };
     },
 
+    /**
+     * @param {string} text raw markdown
+     * @param {number} startAt sentence to resume at
+     */
     prepare(text, startAt) {
       chunks = splitIntoChunks(speechText(text));
       contextBlocks = paragraphs(text);
@@ -812,6 +853,11 @@ Alpine.data("app", () => {
       }, 500);
     },
 
+    /**
+     * @param {string} question
+     * @param {string} text answer
+     * @param {number} at sentence the question came from
+     */
     record(question, text, at) {
       this.log = [{ at: Date.now(), chunk: at, question, answer: text }, ...this.log];
 
@@ -852,6 +898,9 @@ Alpine.data("app", () => {
       this.$refs.settingsDialog.showModal();
     },
 
+    /**
+     * @param {string} voiceId
+     */
     async previewVoice(voiceId) {
       if (this.previewing) return;
 

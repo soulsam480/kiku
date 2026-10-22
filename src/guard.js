@@ -30,6 +30,10 @@ const HALLUCINATIONS = new Set([
 ]);
 
 /** True when a clip is long enough and loud enough to plausibly contain speech. */
+/**
+ * @param {Float32Array} samples 16 kHz mono audio
+ * @returns {boolean} true when the clip is long and loud enough to contain speech
+ */
 export function usableClip(samples) {
   if (samples.length / SAMPLE_RATE < MIN_SECONDS) return false;
 
@@ -40,6 +44,10 @@ export function usableClip(samples) {
 }
 
 /** True when a transcript is more than punctuation, filler or a known hallucination. */
+/**
+ * @param {string} text
+ * @returns {boolean} false for punctuation, filler and Whisper hallucinations
+ */
 export function usableTranscript(text) {
   const words = text
     .toLowerCase()
