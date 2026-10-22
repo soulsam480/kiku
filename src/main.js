@@ -1,7 +1,9 @@
 import Alpine from "alpinejs";
 import { marked } from "marked";
 import { tinykeys } from "tinykeys";
-import { speechText, splitIntoBlocks, takeSentences, paragraphs } from "./markdown.js";
+import { speechText, splitIntoChunks, takeSentences, paragraphs } from "./markdown.js";
+import { mapChunksToBlocks, invert } from "./mapping.js";
+import { usableClip, usableTranscript } from "./guard.js";
 import { Player } from "./player.js";
 import { Tts } from "./tts.js";
 import { Mic } from "./mic.js";
@@ -22,129 +24,6 @@ const CONTEXT_CHARS = 12000; // document text sent to the model when it fits
 const AUDIO_CACHE_LIMIT = 40; // recently played chunks kept for instant seeking
 const IDLE_UNLOAD_MS = 10 * 60 * 1000; // give the models' memory back after this much quiet
 
-const escapeHtml = (text) =>
-  text.replace(/[&<>"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[character]);
-
-const wordsOf = (text) =>
-  text
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .split(/\s+/)
-    .filter(Boolean);
-
-// Whisper invents these for silence or room noise; they must never reach the model.
-const HALLUCINATIONS = new Set([
-  "you",
-  "thank you",
-  "thank you so much",
-  "thanks",
-  "thanks for watching",
-  "thank you for watching",
-  "please subscribe",
-  "subscribe",
-  "bye",
-  "bye bye",
-  "okay",
-  "ok",
-  "yeah",
-  "mm",
-  "hmm",
-  "uh",
-  "um",
-  "silence",
-  "blank audio",
-  "music",
-  "see you next time",
-]);
-
-/** True when a microphone clip sounds like actual speech and reads like a question. */
-function usableClip(samples) {
-  if (samples.length / 16000 < 0.4) return false;
-
-  let energy = 0;
-  for (const sample of samples) energy += sample * sample;
-  // Loose gate: only obviously silent clips are rejected, so quiet speech still gets through.
-  return Math.sqrt(energy / samples.length) > 0.003;
-}
-
-function usableTranscript(text) {
-  const words = text
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (words.length < 3) return false;
-  return !HALLUCINATIONS.has(words);
-}
-
-/**
- * Map each spoken chunk onto the rendered paragraph that contains it, so the reader
- * can highlight where narration is even though the audio text is normalised.
- *
- * Blocks are scored by the *distinctive* words they share with the chunk (rare words
- * count for more), and only a small window around the cursor is considered. Synthetic
- * narration such as "Table with 6 rows. Columns: …" therefore lands on the table
- * itself instead of drifting to some later paragraph.
- */
-function mapChunksToBlocks(chunkTexts, blocks) {
-  const blockWords = blocks.map((block) => new Set(wordsOf(block.textContent)));
-
-  const frequency = new Map();
-  for (const words of blockWords) {
-    for (const word of words) frequency.set(word, (frequency.get(word) ?? 0) + 1);
-  }
-  const weight = (word) => 1 / (frequency.get(word) ?? 1);
-
-  const mapping = [];
-  let cursor = 0;
-
-  for (const chunk of chunkTexts) {
-    const words = [...new Set(wordsOf(chunk))];
-    const from = Math.max(0, cursor - 2);
-    const to = Math.min(blocks.length - 1, cursor + 8);
-
-    let best = cursor;
-    let bestScore = 0;
-
-    for (let block = from; block <= to; block += 1) {
-      let score = 0;
-      for (const word of words) {
-        if (blockWords[block].has(word)) score += weight(word);
-      }
-      if (score > bestScore) {
-        bestScore = score;
-        best = block;
-      }
-    }
-
-    mapping.push(bestScore > 0 ? best : cursor);
-    cursor = best;
-  }
-
-  return mapping;
-}
-
-/**
- * Reverse the chunk mapping: for every rendered block, the chunk narration should
- * start at. Blocks the narrator skips (code, images) fall through to the next one.
- */
-function invert(chunkBlock, blockCount) {
-  const blockChunk = new Array(blockCount).fill(undefined);
-
-  chunkBlock.forEach((block, chunk) => {
-    if (blockChunk[block] === undefined) blockChunk[block] = chunk;
-  });
-
-  let next;
-  for (let block = blockCount - 1; block >= 0; block -= 1) {
-    if (blockChunk[block] === undefined) blockChunk[block] = next;
-    else next = blockChunk[block];
-  }
-
-  return blockChunk;
-}
-
 Alpine.data("app", () => {
   const player = new Player();
   const tts = new Tts();
@@ -152,7 +31,6 @@ Alpine.data("app", () => {
   const stt = new Stt();
 
   let chunks = [];
-  let blocks = []; // spoken paragraphs, each with its chunks
   let previewBlocks = []; // rendered markdown blocks, for highlighting
   let chunkBlock = []; // chunk index -> preview block index
   let blockChunk = []; // preview block index -> chunk index
@@ -176,7 +54,6 @@ Alpine.data("app", () => {
   let ticker = null;
   let micTimer = null;
   let unbindKeys = null;
-  let sectionIndex = []; // headings, with the chunk narration should start at
   let lastActivity = Date.now();
 
   // Recently played chunks stay in memory so prev/next is instant.
@@ -293,6 +170,16 @@ Alpine.data("app", () => {
             blockTexts: previewBlocks.map((block) => block.textContent.replace(/\s+/g, " ").trim().slice(0, 40)),
             chunks,
           }),
+          expireIdle: () => {
+            lastActivity = 0;
+          },
+          state: () => ({
+            mode: this.mode,
+            inflight: inflight.size,
+            pending: pendingAudio.size,
+            idledForMs: Date.now() - lastActivity,
+            loaded: tts.loaded,
+          }),
         };
       }
 
@@ -323,6 +210,7 @@ Alpine.data("app", () => {
     },
 
     open(document) {
+      this.touch();
       currentDoc = document;
       this.doc = document.markdown;
       this.docTitle = document.title ?? titleOf(document.markdown);
@@ -346,7 +234,6 @@ Alpine.data("app", () => {
 
       currentDoc = null;
       chunks = [];
-      blocks = [];
       contextBlocks = [];
       nextIndex = 0;
       snapshot = null;
@@ -388,6 +275,7 @@ Alpine.data("app", () => {
     },
 
     async start() {
+      this.touch();
       const text = this.doc.trim();
       if (!text) return this.fail("Paste some markdown first.");
 
@@ -414,6 +302,7 @@ Alpine.data("app", () => {
     },
 
     async play() {
+      this.touch();
       if (this.doc.trim() !== preparedDoc.trim()) {
         this.prepare(this.doc, 0);
       }
@@ -432,7 +321,8 @@ Alpine.data("app", () => {
         }
       } catch (error) {
         this.mode = "idle";
-        return this.fail(`Speech could not start: ${error.message}`);
+        if (error.name !== "AbortError") this.fail(`Speech could not start: ${error.message}`);
+        return;
       }
 
       await player.resume();
@@ -466,6 +356,8 @@ Alpine.data("app", () => {
     stop() {
       askAbort?.abort();
       answerToken += 1;
+      tts.abandon();
+      stt.abandon();
       player.clear();
       snapshot = null;
       nextIndex = 0;
@@ -488,6 +380,7 @@ Alpine.data("app", () => {
     },
 
     async ask() {
+      this.touch();
       const question = this.question.trim();
       if (!question) return;
 
@@ -567,7 +460,7 @@ Alpine.data("app", () => {
           player.enqueue(samples, sampleRate, -1);
         })
         .catch((error) => {
-          if (token === answerToken) this.fail(`Speech failed: ${error.message}`);
+          if (token === answerToken && error.name !== "AbortError") this.fail(`Speech failed: ${error.message}`);
         })
         .finally(() => {
           current.inflight -= 1;
@@ -617,10 +510,14 @@ Alpine.data("app", () => {
 
     /** Start narration at a chunk, from cache when it has been heard already. */
     async playFrom(index) {
+      this.touch();
       if (!chunks.length) return;
 
       const target = Math.min(Math.max(index, 0), chunks.length - 1);
       const token = ++seekToken;
+
+      tts.abandon();
+      inflight = new Set();
 
       player.clear();
       snapshot = null;
@@ -639,7 +536,7 @@ Alpine.data("app", () => {
           await player.unlock();
           audio = await this.synthesize(target);
         } catch (error) {
-          if (token !== seekToken) return;
+          if (token !== seekToken || error.name === "AbortError") return;
           this.mode = "interrupted";
           this.askStage = "";
           return this.fail(`Speech failed: ${error.message}`);
@@ -721,7 +618,11 @@ Alpine.data("app", () => {
     },
 
     tick() {
-      this.maybeUnload();
+      if (this.mode === "playing" || this.mode === "paused" || this.mode === "answering") {
+        this.touch();
+      } else {
+        this.maybeUnload();
+      }
 
       if (this.mode === "playing" || this.mode === "paused") {
         this.pump();
@@ -734,7 +635,8 @@ Alpine.data("app", () => {
     /** Terminate the speech workers once nothing has needed them for a while. */
     maybeUnload() {
       if (this.mode === "playing" || this.mode === "loading" || this.mode === "answering") return;
-      if (tts.busy || stt.busy) return;
+      if (player.isActive() || tts.busy || stt.busy) return;
+      if (pendingAudio.size > 0 || inflight.size > 0) return;
       if (Date.now() - lastActivity < IDLE_UNLOAD_MS) return;
 
       this.unloadModels();
@@ -775,7 +677,9 @@ Alpine.data("app", () => {
         inflight.add(i);
         this.synthesize(i)
           .then((audio) => pendingAudio.set(i, audio))
-          .catch((error) => this.fail(`Speech failed: ${error.message}`))
+          .catch((error) => {
+            if (error.name !== "AbortError") this.fail(`Speech failed: ${error.message}`);
+          })
           .finally(() => {
             inflight.delete(i);
             this.pump();
@@ -827,9 +731,7 @@ Alpine.data("app", () => {
     },
 
     prepare(text, startAt) {
-      const spoken = speechText(text);
-      blocks = splitIntoBlocks(spoken);
-      chunks = blocks.flatMap((block) => block.chunks);
+      chunks = splitIntoChunks(speechText(text));
       contextBlocks = paragraphs(text);
 
       nextIndex = Math.min(startAt, chunks.length);
@@ -940,6 +842,7 @@ Alpine.data("app", () => {
     },
 
     async toggleMic() {
+      this.touch();
       if (this.micState === "recording") return this.stopMic(true);
       if (this.micState === "transcribing") return;
 
