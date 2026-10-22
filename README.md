@@ -41,8 +41,8 @@ data/listener.db          SQLite: documents, chapters, status, durations
 data/audio/<id>.mp3       64 kbps mono chapter audio, served with range requests
 ```
 
-`data/` is gitignored; `data/corpus.md` is a test fixture. Point `DATA_DIR`
-somewhere else to keep books outside the repo.
+`data/` is gitignored and created on first start. Point `DATA_DIR` somewhere
+else to keep books outside the repo.
 
 ## Configuration
 

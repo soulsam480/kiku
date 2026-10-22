@@ -65,7 +65,7 @@ test("hard-wrapped prose stays one sentence", () => {
 });
 
 test("chunks break on sentence boundaries, not mid-sentence", () => {
-  const corpus = readFileSync(new URL("../data/corpus.md", import.meta.url), "utf8");
+  const corpus = readFileSync(new URL("./fixtures/corpus.md", import.meta.url), "utf8");
   const chunks = splitIntoChunks(speechText(corpus));
   const broken = chunks.filter((chunk, index) => index > 0 && !/[.!?]["')\]]*$/.test(chunks[index - 1].trim()));
 
