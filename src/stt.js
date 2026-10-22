@@ -45,13 +45,20 @@ export class Stt {
     });
   }
 
+  abandon() {
+    const error = new DOMException("Transcription abandoned", "AbortError");
+    for (const request of this.#requests.values()) request.reject(error);
+    this.#requests.clear();
+  }
+
   dispose() {
     if (!this.#worker) return false;
 
     this.#worker.terminate();
     this.#worker = null;
 
-    for (const request of this.#requests.values()) request.reject(new Error("Transcription unloaded"));
+    const error = new DOMException("Transcription unloaded", "AbortError");
+    for (const request of this.#requests.values()) request.reject(error);
     this.#requests.clear();
     return true;
   }

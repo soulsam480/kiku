@@ -33,6 +33,13 @@ export class Tts {
     return this.#send({ type: "synth", text, ...options }, 60000);
   }
 
+  /** Give up on queued requests without unloading the model (used when the reader stops). */
+  abandon() {
+    const error = new DOMException("Speech request abandoned", "AbortError");
+    for (const request of this.#requests.values()) request.reject(error);
+    this.#requests.clear();
+  }
+
   /** Terminate the worker and free the model. Returns false when nothing was loaded. */
   dispose() {
     if (!this.#worker) return false;
@@ -40,7 +47,8 @@ export class Tts {
     this.#worker.terminate();
     this.#worker = null;
 
-    for (const request of this.#requests.values()) request.reject(new Error("Speech engine unloaded"));
+    const error = new DOMException("Speech engine unloaded", "AbortError");
+    for (const request of this.#requests.values()) request.reject(error);
     this.#requests.clear();
     return true;
   }
