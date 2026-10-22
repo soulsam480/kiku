@@ -113,6 +113,7 @@
         <div class="flex items-center gap-2 text-xs text-base-content/50">
           <span x-text="progressText"></span>
           <span class="grow"></span>
+          <span class="hidden text-base-content/40 md:inline" x-text="deployedLabel"></span>
           <span class="hidden md:inline">space pause · ←→ sentence · click text to jump · i ask · m talk</span>
         </div>
 
@@ -240,6 +241,8 @@
             <span class="text-sm">Speak answers aloud</span>
           </label>
         </div>
+        <p class="mt-3 text-xs text-base-content/40" x-text="deployedLabel || 'dev build'"></p>
+
         <div class="modal-action">
           <button class="btn btn-sm" @click="saveSettings()">Save</button>
           <button class="btn btn-sm btn-ghost" @click="$refs.settingsDialog.close()">Cancel</button>

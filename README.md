@@ -107,6 +107,9 @@ not get microphone access.
 
 ## Notes
 
+- The build timestamp is shown in the footer (and in Settings): `built 22 Oct, 17:07`.
+  It comes from the bundle itself, so if it looks stale, a cached service worker is
+  serving an old build.
 - First sound after a reload takes a while: the wasm runtime compiles and the first
   chunk is synthesized before the badge says `playing`. The badge shows `loading`
   and model download progress until then.

@@ -205,6 +205,18 @@ Alpine.data("app", () => {
     settings: loadSettings(),
     draft: loadSettings(),
     editing: true,
+    deployedAt: import.meta.env.DEV ? "" : __BUILD_TIME__,
+
+    get deployedLabel() {
+      if (!this.deployedAt) return "";
+      const when = new Date(this.deployedAt).toLocaleString([], {
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      return `built ${when}`;
+    },
 
     get statusLabel() {
       const parts = [this.mode];
