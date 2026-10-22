@@ -47,6 +47,19 @@ on first load. Settings still live in localStorage.
 During narration the paragraph being spoken is highlighted in the preview and scrolled
 into view; the exact sentence is shown in the caption bar.
 
+## Tests
+
+```sh
+npm test                                   # unit tests: normalisation, chunking, tables, emoji
+playwright-cli run-code "$(cat tests/e2e.js)"   # end-to-end against the deployment
+```
+
+The end-to-end script drives a real browser: it creates a document, narrates it,
+checks the highlight and caption, seeks, jumps by clicking a heading, interrupts and
+resumes, reloads to confirm persistence, then deletes the test document. It never
+calls the model, so no key is needed, and it clears the service worker first so a
+cached build can't produce a false pass.
+
 ## Use
 
 1. Paste markdown, press **Start listening**.
