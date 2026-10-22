@@ -255,6 +255,8 @@ function isFalsy(value) {
   return /^(|[-—–]|n\/?a|none|no|false|0|x|✗|✘|❌|·)$/i.test(value.trim());
 }
 
+import emojiNames from "./emoji-names.json" with { type: "json" };
+
 const EMOJI_WORDS = new Map(
   Object.entries({
     "✅": " check ",
@@ -295,11 +297,13 @@ const EMOJI_WORDS = new Map(
   }),
 );
 
-const EMOJI_PATTERN = /[\p{Extended_Pictographic}\u2190-\u21FF\u2B00-\u2BFF]/u;
+const EMOJI_PATTERN = /[\p{Extended_Pictographic}\u2190-\u21FF\u2B00-\u2BFF\u{1F1E6}-\u{1F1FF}]/u;
+const EMOJI_NAMES = new Map(Object.entries(emojiNames));
 
 /**
- * Say emoji instead of dropping them: ❌ becomes "cross", ✅ becomes "check".
- * Unknown emoji are removed so they are never read as noise.
+ * Say emoji instead of dropping them. Common ones use short, natural words
+ * ("❌" → "cross"); everything else falls back to its Unicode CLDR name
+ * ("🇺🇸" → "United States", "🚀" → "rocket"). Truly unknown glyphs are removed.
  */
 function normalizeEmoji(text) {
   if (!EMOJI_PATTERN.test(text)) return text;
@@ -314,10 +318,25 @@ function normalizeEmoji(text) {
       continue;
     }
 
-    output += EMOJI_WORDS.get(segment) ?? EMOJI_WORDS.get(segment.replace(/\uFE0F/g, "")) ?? " ";
+    output += ` ${emojiWord(segment)} `;
   }
 
   return output;
+}
+
+function emojiWord(segment) {
+  const bare = segment.replace(/\uFE0F/g, "");
+  const plain = bare.replace(/[\u{1F3FB}-\u{1F3FF}]/gu, ""); // skin tone modifiers
+
+  return (
+    EMOJI_WORDS.get(segment) ??
+    EMOJI_WORDS.get(bare) ??
+    EMOJI_NAMES.get(segment) ??
+    EMOJI_NAMES.get(bare) ??
+    EMOJI_NAMES.get(plain) ??
+    EMOJI_WORDS.get(plain) ??
+    ""
+  );
 }
 
 /** Add a full stop to lines that would otherwise run together, and drop empty ones. */

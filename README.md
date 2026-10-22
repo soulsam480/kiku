@@ -59,7 +59,11 @@ into view; the exact sentence is shown in the caption bar.
 Markdown is converted to speech text: code blocks, images, link targets, bare URLs
 and markup punctuation are rewritten so the narrator never says "asterisk" or "open
 bracket", and slashes read as words (`and/or` → "and or", `1/2` → "1 over 2"). Emoji
-are spoken rather than dropped (`✅` → "check", `⚠️` → "warning", `→` → "to").
+are spoken rather than dropped: common ones use short words (`✅` → "check", `⚠️` →
+"warning"), and the rest fall back to Unicode CLDR names (`🇺🇸` → "United States",
+`🫠` → "melting face"). That table is `src/emoji-names.json`, generated from
+[unicode-emoji-json](https://github.com/muan/unicode-emoji-json) (MIT); it adds about
+20 KB gzipped to the bundle.
 
 Tables are narrated by shape: two-column tables read as term/definition pairs, normal
 tables read row by row with their column names, and comparison matrices (entities
