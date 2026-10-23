@@ -2,6 +2,7 @@ node_modules
 dist
 .playwright-cli
 .playwright-cli-dev.log
+.run
 .env
 .DS_Store
 

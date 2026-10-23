@@ -1,3 +1,111 @@
 [tools]
 node = "24"
 bun = "1.4.3"
+
+[tasks.start]
+description = "Build the frontend and start Listener on :8787 in the background"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+RUN=.run
+PID_FILE=$RUN/listener.pid
+LOG_FILE=$RUN/listener.log
+PORT=${PORT:-8787}
+
+mkdir -p "$RUN"
+
+if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+  echo "listener already running (pid $(cat "$PID_FILE"))"
+  exit 0
+fi
+
+bun run build
+
+nohup bun src/server.js >>"$LOG_FILE" 2>&1 &
+echo $! >"$PID_FILE"
+
+for _ in $(seq 1 40); do
+  if curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
+    echo "listener running on http://127.0.0.1:${PORT} (pid $(cat "$PID_FILE"))"
+    echo "log: $LOG_FILE"
+    exit 0
+  fi
+  if ! kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+    echo "listener exited during startup; last log lines:" >&2
+    tail -n 20 "$LOG_FILE" >&2
+    rm -f "$PID_FILE"
+    exit 1
+  fi
+  sleep 0.25
+done
+
+echo "listener did not answer /health within 10s; see $LOG_FILE" >&2
+exit 1
+'''
+
+[tasks.stop]
+description = "Stop the background Listener service"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+RUN=.run
+PID_FILE=$RUN/listener.pid
+
+if [ -f "$PID_FILE" ]; then
+  PID=$(cat "$PID_FILE")
+  if kill -0 "$PID" 2>/dev/null; then
+    kill "$PID"
+    for _ in $(seq 1 40); do
+      kill -0 "$PID" 2>/dev/null || break
+      sleep 0.25
+    done
+    if kill -0 "$PID" 2>/dev/null; then
+      kill -9 "$PID" 2>/dev/null || true
+    fi
+    echo "listener stopped (pid $PID)"
+  else
+    echo "listener was not running (stale pid $PID)"
+  fi
+  rm -f "$PID_FILE"
+  exit 0
+fi
+
+# Started outside mise: match the server process, not this script ([.] avoids self-match).
+if pgrep -f "bun src/server[.]js" >/dev/null; then
+  pkill -f "bun src/server[.]js"
+  echo "listener stopped (found by pattern)"
+else
+  echo "listener is not running"
+fi
+'''
+
+[tasks.restart]
+description = "Rebuild and restart the Listener service"
+depends = ["stop"]
+run = "mise run start"
+
+[tasks.status]
+description = "Show whether Listener is running"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+RUN=.run
+PID_FILE=$RUN/listener.pid
+PORT=${PORT:-8787}
+
+if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+  echo "running (pid $(cat "$PID_FILE"))"
+  curl -fsS "http://127.0.0.1:${PORT}/health" || echo "(health check failed)"
+  echo
+else
+  echo "not running"
+  exit 1
+fi
+'''
+
+[tasks.logs]
+description = "Follow the Listener service log"
+run = "tail -n 50 -f .run/listener.log"

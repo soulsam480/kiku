@@ -29,6 +29,16 @@ narration downloads the Kokoro model (about 90 MB) once, then runs offline on CP
 | `bun test` | Unit tests and type check |
 | `bun run typecheck` | `tsc` with `checkJs` over `src/`, `tests/` |
 
+On a long-running machine, the mise tasks manage it as a background service:
+
+```sh
+mise run start     # build, start in the background, wait for /health
+mise run status    # pid and /health
+mise run logs      # tail .run/listener.log
+mise run restart   # stop, rebuild, start
+mise run stop
+```
+
 Requires `ffmpeg` on `PATH` (MP3 encoding and speech-to-text decoding) and Bun
 1.4+. On a fresh clone `bun start` is the only command you need.
 
