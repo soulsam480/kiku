@@ -1,3 +1,4 @@
+import { newId } from "./id.js";
 import { DEFAULT_VOICE } from "./voices.js";
 
 const SETTINGS_KEY = "listener.settings.v1";
@@ -33,7 +34,7 @@ export function saveSession(session) {
 /** One id per listening session, reused on every model call so the provider can cache the document prefix. */
 /** @returns {string} */
 export function newSessionId() {
-  return crypto.randomUUID();
+  return newId();
 }
 
 function read(key, fallback) {

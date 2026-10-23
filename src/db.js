@@ -1,3 +1,5 @@
+import { newId } from "./id.js";
+
 const DB_NAME = "listener";
 const DB_VERSION = 1;
 const STORE = "documents";
@@ -70,7 +72,7 @@ export async function saveDocument(document) {
     log: [],
     position: 0,
     ...document,
-    id: document.id ?? crypto.randomUUID(),
+    id: document.id ?? newId(),
     updatedAt: Date.now(),
   });
 
